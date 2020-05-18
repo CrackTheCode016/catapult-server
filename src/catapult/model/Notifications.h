@@ -433,27 +433,27 @@ namespace catapult { namespace model {
 		static constexpr auto Notification_Type = Core_Mosaic_Required_Notification;
 
 	public:
-		/// Creates a notification around \a signer, \a mosaicId and optional \a propertyFlagMask.
-		MosaicRequiredNotification(const Key& signer, MosaicId mosaicId, uint8_t propertyFlagMask = 0)
+		/// Creates a notification around \a owner, \a mosaicId and optional \a propertyFlagMask.
+		MosaicRequiredNotification(const Key& owner, MosaicId mosaicId, uint8_t propertyFlagMask = 0)
 				: Notification(Notification_Type, sizeof(MosaicRequiredNotification))
-				, Signer(signer)
+				, Owner(owner)
 				, MosaicId(mosaicId)
 				, PropertyFlagMask(propertyFlagMask)
 				, ProvidedMosaicType(MosaicType::Resolved)
 		{}
 
-		/// Creates a notification around \a signer, \a mosaicId and optional \a propertyFlagMask.
-		MosaicRequiredNotification(const Key& signer, UnresolvedMosaicId mosaicId, uint8_t propertyFlagMask = 0)
+		/// Creates a notification around \a owner, \a mosaicId and optional \a propertyFlagMask.
+		MosaicRequiredNotification(const Key& owner, UnresolvedMosaicId mosaicId, uint8_t propertyFlagMask = 0)
 				: Notification(Notification_Type, sizeof(MosaicRequiredNotification))
-				, Signer(signer)
+				, Owner(owner)
 				, UnresolvedMosaicId(mosaicId)
 				, PropertyFlagMask(propertyFlagMask)
 				, ProvidedMosaicType(MosaicType::Unresolved)
 		{}
 
 	public:
-		/// Signer.
-		const Key& Signer;
+		/// Mosaic owner.
+		const Key& Owner;
 
 		/// Mosaic id (resolved).
 		catapult::MosaicId MosaicId;

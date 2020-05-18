@@ -79,7 +79,7 @@ namespace catapult { namespace plugins {
 			EXPECT_EQ(transaction.MosaicId, notification.AliasedData);
 		});
 		builder.template addExpectation<MosaicRequiredNotification>([&transaction](const auto& notification) {
-			EXPECT_EQ(transaction.SignerPublicKey, notification.Signer);
+			EXPECT_EQ(transaction.SignerPublicKey, notification.Owner);
 			EXPECT_EQ(transaction.MosaicId, notification.MosaicId);
 			EXPECT_EQ(UnresolvedMosaicId(), notification.UnresolvedMosaicId);
 			EXPECT_EQ(0u, notification.PropertyFlagMask);
