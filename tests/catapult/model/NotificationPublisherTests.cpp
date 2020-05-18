@@ -197,7 +197,7 @@ namespace catapult { namespace model {
 		// Act:
 		PublishOne<BlockNotification>(*pBlock, [&block = *pBlock](const auto& notification) {
 			// Assert:
-			EXPECT_EQ(block.SignerPublicKey, notification.Signer);
+			EXPECT_EQ(block.SignerPublicKey, notification.Harvester);
 			EXPECT_EQ(block.BeneficiaryPublicKey, notification.Beneficiary);
 			EXPECT_EQ(Timestamp(123), notification.Timestamp);
 			EXPECT_EQ(Difficulty(575), notification.Difficulty);
@@ -217,7 +217,7 @@ namespace catapult { namespace model {
 		// Act:
 		PublishOne<BlockNotification>(*pBlock, [&block = *pBlock](const auto& notification) {
 			// Assert:
-			EXPECT_EQ(block.SignerPublicKey, notification.Signer);
+			EXPECT_EQ(block.SignerPublicKey, notification.Harvester);
 			EXPECT_EQ(block.BeneficiaryPublicKey, notification.Beneficiary);
 			EXPECT_EQ(Timestamp(432), notification.Timestamp);
 			EXPECT_EQ(Difficulty(575), notification.Difficulty);
