@@ -70,7 +70,7 @@ namespace catapult { namespace plugins {
 			EXPECT_EQ(MosaicRequiredNotification::MosaicType::Unresolved, notification.ProvidedMosaicType);
 		});
 		builder.template addExpectation<MosaicSupplyChangeNotification>([&transaction](const auto& notification) {
-			EXPECT_EQ(transaction.SignerPublicKey, notification.Signer);
+			EXPECT_EQ(transaction.SignerPublicKey, notification.Owner);
 			EXPECT_EQ(transaction.MosaicId, notification.MosaicId);
 			EXPECT_EQ(transaction.Action, notification.Action);
 			EXPECT_EQ(transaction.Delta, notification.Delta);
