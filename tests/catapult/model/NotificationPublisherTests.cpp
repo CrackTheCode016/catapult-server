@@ -336,7 +336,7 @@ namespace catapult { namespace model {
 		PublishOne<TransactionNotification>(*pTransaction, hash, [&signer = pTransaction->SignerPublicKey, &hash](
 				const auto& notification) {
 			// Assert:
-			EXPECT_EQ(signer, notification.Signer);
+			EXPECT_EQ(signer, notification.Sender);
 			EXPECT_EQ(hash, notification.TransactionHash);
 			EXPECT_EQ(static_cast<EntityType>(mocks::MockTransaction::Entity_Type), notification.TransactionType);
 			EXPECT_EQ(Timestamp(454), notification.Deadline);
@@ -364,7 +364,7 @@ namespace catapult { namespace model {
 		// Act:
 		PublishOne<TransactionFeeNotification>(*pTransaction, [&transaction = *pTransaction](const auto& notification) {
 			// Assert: max fee is used when there is no associated block
-			EXPECT_EQ(transaction.SignerPublicKey, notification.Signer);
+			EXPECT_EQ(transaction.SignerPublicKey, notification.Sender);
 			EXPECT_EQ(transaction.Size, notification.TransactionSize);
 			EXPECT_EQ(Amount(765), notification.Fee);
 			EXPECT_EQ(Amount(765), notification.MaxFee);
@@ -385,7 +385,7 @@ namespace catapult { namespace model {
 		// Act:
 		PublishOne<TransactionFeeNotification>(weakEntityInfo, [&transaction = *pTransaction](const auto& notification) {
 			// Assert: calculated fee is used when there is associated block
-			EXPECT_EQ(transaction.SignerPublicKey, notification.Signer);
+			EXPECT_EQ(transaction.SignerPublicKey, notification.Sender);
 			EXPECT_EQ(transaction.Size, notification.TransactionSize);
 			EXPECT_EQ(Amount(4 * 234), notification.Fee);
 			EXPECT_EQ(Amount(765), notification.MaxFee);

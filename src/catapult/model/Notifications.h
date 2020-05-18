@@ -255,18 +255,18 @@ namespace catapult { namespace model {
 		static constexpr auto Notification_Type = Core_Transaction_Notification;
 
 	public:
-		/// Creates a transaction notification around \a signer, \a transactionHash, \a transactionType and \a deadline.
-		TransactionNotification(const Key& signer, const Hash256& transactionHash, EntityType transactionType, Timestamp deadline)
+		/// Creates a transaction notification around \a sender, \a transactionHash, \a transactionType and \a deadline.
+		TransactionNotification(const Key& sender, const Hash256& transactionHash, EntityType transactionType, Timestamp deadline)
 				: Notification(Notification_Type, sizeof(TransactionNotification))
-				, Signer(signer)
+				, Sender(sender)
 				, TransactionHash(transactionHash)
 				, TransactionType(transactionType)
 				, Deadline(deadline)
 		{}
 
 	public:
-		/// Transaction signer.
-		const Key& Signer;
+		/// Transaction sender.
+		const Key& Sender;
 
 		/// Transaction hash.
 		const Hash256& TransactionHash;
@@ -308,18 +308,18 @@ namespace catapult { namespace model {
 		static constexpr auto Notification_Type = Core_Transaction_Fee_Notification;
 
 	public:
-		/// Creates a transaction fee notification around \a signer, \a transactionSize, \a fee and \a maxFee.
-		TransactionFeeNotification(const Key& signer, uint32_t transactionSize, Amount fee, Amount maxFee)
+		/// Creates a transaction fee notification around \a sender, \a transactionSize, \a fee and \a maxFee.
+		TransactionFeeNotification(const Key& sender, uint32_t transactionSize, Amount fee, Amount maxFee)
 				: Notification(Notification_Type, sizeof(TransactionFeeNotification))
-				, Signer(signer)
+				, Sender(sender)
 				, TransactionSize(transactionSize)
 				, Fee(fee)
 				, MaxFee(maxFee)
 		{}
 
 	public:
-		/// Transaction signer.
-		const Key& Signer;
+		/// Transaction sender.
+		const Key& Sender;
 
 		/// Transaction size.
 		uint32_t TransactionSize;
