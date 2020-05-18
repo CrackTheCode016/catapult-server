@@ -346,23 +346,23 @@ namespace catapult { namespace model {
 		static constexpr auto Notification_Type = Core_Signature_Notification;
 
 	public:
-		/// Creates a signature notification around \a signer, \a signature and \a data with optional replay protection mode
+		/// Creates a signature notification around \a signerPublicKey, \a signature and \a data with optional replay protection mode
 		/// (\a dataReplayProtectionMode) applied to data.
 		SignatureNotification(
-				const Key& signer,
+				const Key& signerPublicKey,
 				const Signature& signature,
 				const RawBuffer& data,
 				ReplayProtectionMode dataReplayProtectionMode = ReplayProtectionMode::Disabled)
 				: Notification(Notification_Type, sizeof(SignatureNotification))
-				, Signer(signer)
+				, SignerPublicKey(signerPublicKey)
 				, Signature(signature)
 				, Data(data)
 				, DataReplayProtectionMode(dataReplayProtectionMode)
 		{}
 
 	public:
-		/// Signer.
-		const Key& Signer;
+		/// Signer public key.
+		const Key& SignerPublicKey;
 
 		/// Signature.
 		const catapult::Signature& Signature;

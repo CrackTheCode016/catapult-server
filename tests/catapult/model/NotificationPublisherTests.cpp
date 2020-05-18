@@ -164,7 +164,7 @@ namespace catapult { namespace model {
 		// Act:
 		PublishOne<SignatureNotification>(*pBlock, [&block = *pBlock](const auto& notification) {
 			// Assert:
-			EXPECT_EQ(block.SignerPublicKey, notification.Signer);
+			EXPECT_EQ(block.SignerPublicKey, notification.SignerPublicKey);
 			EXPECT_EQ(block.Signature, notification.Signature);
 			EXPECT_EQ(test::AsVoidPointer(&block.Version), test::AsVoidPointer(notification.Data.pData));
 			EXPECT_EQ(sizeof(BlockHeader) - VerifiableEntity::Header_Size - Block::Footer_Size, notification.Data.Size);
@@ -315,7 +315,7 @@ namespace catapult { namespace model {
 		// Act:
 		PublishOne<SignatureNotification>(*pTransaction, [&transaction = *pTransaction](const auto& notification) {
 			// Assert:
-			EXPECT_EQ(transaction.SignerPublicKey, notification.Signer);
+			EXPECT_EQ(transaction.SignerPublicKey, notification.SignerPublicKey);
 			EXPECT_EQ(transaction.Signature, notification.Signature);
 
 			// - notice that mock plugin is configured with PluginOptionFlags::Custom_Buffers so dataBuffer() contains only data payload
