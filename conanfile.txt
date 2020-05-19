@@ -1,0 +1,20 @@
+[requires]
+ boost/1.71.0@conan/stable
+ gtest/1.8.1
+ benchmark/1.5.0
+ zmq/4.3.2@bincrafters/stable
+ cppzmq/4.4.1@bincrafters/stable
+ mongo-c-driver/1.16.1@bincrafters/stable
+ zlib/1.2.11@conan/stable
+
+[generators]
+ cmake
+ cmake_paths
+ cmake_find_package
+
+[options]
+*:shared=True
+
+[imports]
+bin, *.dll -> ./bin
+lib, *.dylib* -> ./bin

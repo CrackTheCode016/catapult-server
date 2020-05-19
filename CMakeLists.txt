@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.14)
 project(catapult_server)
 include(CMakeGlobalSettings.cmake)
+include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
+conan_basic_setup(KEEP_RPATHS)
 option(ENABLE_CODE_COVERAGE "Enable code coverage" OFF)
 option(ENABLE_TESTS "Enable tests" ON)
 
@@ -11,13 +13,16 @@ message(STATUS "CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
 message(STATUS "CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 message(STATUS "CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
 message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
-message(STATUS "BOOST_ROOT: $ENV{BOOST_ROOT}")
+message(STATUS "BOOST_ROOT: ${CONAN_BOOST_ROOT}")
 
 set(CORE_CATAPULT_LIBS catapult.io catapult.ionet catapult.model catapult.thread catapult.utils)
 
 ### setup boost
-find_package(Boost COMPONENTS atomic system date_time regex timer chrono log thread filesystem program_options REQUIRED)
-include_directories(SYSTEM ${Boost_INCLUDE_DIR})
+find_package(boost COMPONENTS atomic system date_time regex timer chrono log thread filesystem program_options REQUIRED)
+include_directories(SYSTEM ${CONAN_BOOST_ROOT}/include)
+
+### setup gtest
+find_package(GTest REQUIRED)
 
 ### setup openssl
 message("--- locating openssl dependencies ---")

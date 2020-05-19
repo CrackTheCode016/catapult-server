@@ -1,6 +1,10 @@
 ### enable testing
 enable_testing()
 
+include(${CMAKE_BINARY_DIR}/conan_paths.cmake)
+include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
+conan_basic_setup(KEEP_RPATHS)
+
 ### enable ccache if available
 find_program(CCACHE_FOUND ccache)
 if(CCACHE_FOUND)
@@ -127,12 +131,23 @@ elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
 		-Wno-disabled-macro-expansion \
 		-Wno-padded \
 		-Wno-switch-enum \
-		-Wno-weak-vtables")
+		-Wno-weak-vtables \
+		-Wno-missing-noreturn \
+		-Wno-deprecated-declarations \
+		-Wno-reserved-id-macro")
 
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden")
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fvisibility=hidden")
 
 	set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -g1")
+endif()
+
+if (APPLE)
+	set(CMAKE_INSTALL_RPATH "@executable_path/../bin")
+	message("RPATHCMAKE ${CMAKE_INSTALL_RPATH}")
+	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--enable-new-dtags")
+	set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+	set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 endif()
 
 # set runpath for built binaries on linux
@@ -157,8 +172,7 @@ endif()
 
 # find and set gtest includes
 function(catapult_add_gtest_dependencies)
-	find_package(GTest REQUIRED)
-	include_directories(SYSTEM ${GTEST_INCLUDE_DIR})
+	include_directories(SYSTEM ${GTest_INCLUDE_DIR})
 endfunction()
 
 # add tests subdirectory
@@ -234,7 +248,7 @@ function(catapult_target TARGET_NAME)
 	set_property(TARGET ${TARGET_NAME} PROPERTY CXX_STANDARD 17)
 
 	# indicate boost as a dependency
-	target_link_libraries(${TARGET_NAME} ${Boost_LIBRARIES})
+	target_link_libraries(${TARGET_NAME} ${boost_LIBRARIES})
 
 	# copy boost shared libraries
 	foreach(BOOST_COMPONENT ATOMIC SYSTEM DATE_TIME REGEX TIMER CHRONO LOG THREAD FILESYSTEM PROGRAM_OPTIONS)
@@ -371,13 +385,12 @@ endfunction()
 
 # used to define a catapult test executable
 function(catapult_test_executable TARGET_NAME)
-	find_package(GTest REQUIRED)
-	include_directories(SYSTEM ${GTEST_INCLUDE_DIR})
+	include_directories(SYSTEM ${GTest_INCLUDE_DIR})
 
 	catapult_executable(${TARGET_NAME} ${ARGN})
 	add_test(NAME ${TARGET_NAME} WORKING_DIRECTORY ${CMAKE_BINARY_DIR} COMMAND ${TARGET_NAME})
 
-	target_link_libraries(${TARGET_NAME} ${GTEST_LIBRARIES})
+	target_link_libraries(${TARGET_NAME} ${GTest_LIBRARIES})
 endfunction()
 
 # used to define a catapult test executable for a catapult library by combining catapult_test_executable and
@@ -386,8 +399,7 @@ function(catapult_test_executable_target TARGET_NAME TEST_DEPENDENCY_NAME)
 	catapult_test_executable(${TARGET_NAME} ${ARGN})
 
 	# inline instead of calling catapult_add_gtest_dependencies in order to apply gtest dependencies to correct scope
-	find_package(GTest REQUIRED)
-	include_directories(SYSTEM ${GTEST_INCLUDE_DIR})
+	include_directories(SYSTEM ${GTest_INCLUDE_DIR})
 
 	# customize and export compiler options for gtest
 	catapult_set_test_compiler_options()

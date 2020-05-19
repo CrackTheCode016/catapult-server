@@ -3,6 +3,9 @@ cmake_minimum_required(VERSION 3.14)
 include_directories(.)
 include_directories(${PROJECT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/src)
 
+
+message("CATDIR ${PROJECT_SOURCE_DIR}/src")
+
 function(catapult_define_extension_no_group EXTENSION_NAME)
 	add_subdirectory(src)
 	catapult_add_tests_subdirectory(tests)
@@ -33,6 +36,7 @@ endfunction()
 
 add_subdirectory(addressextraction)
 add_subdirectory(diagnostics)
+add_subdirectory(eventsource)
 add_subdirectory(filespooling)
 add_subdirectory(harvesting)
 add_subdirectory(hashcache)
