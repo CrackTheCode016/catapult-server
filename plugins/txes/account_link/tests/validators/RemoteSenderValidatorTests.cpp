@@ -48,14 +48,14 @@ namespace catapult { namespace validators {
 				ValidationResult expectedResult,
 				const Key& accountPublicKey,
 				state::AccountType accountType,
-				const Key& notificationKey) {
+				const Key& notificationPublicKey) {
 			// Arrange:
 			auto cache = test::CoreSystemCacheFactory::Create(model::BlockChainConfiguration::Uninitialized());
 			AddAccount(cache, accountPublicKey, accountType);
 
 			auto pValidator = CreateRemoteSenderValidator();
 			auto entityType = static_cast<model::EntityType>(0x4201);
-			auto notification = model::TransactionNotification(notificationKey, Hash256(), entityType, Timestamp());
+			auto notification = model::TransactionNotification(notificationPublicKey, Hash256(), entityType, Timestamp());
 
 			// Act:
 			auto result = test::ValidateNotification(*pValidator, notification, cache);
@@ -77,10 +77,10 @@ namespace catapult { namespace validators {
 	TEST(TEST_CLASS, SuccessWhenSenderIsUnknown) {
 		// Arrange:
 		auto accountPublicKey = test::GenerateRandomByteArray<Key>();
-		auto notificationKey = test::GenerateRandomByteArray<Key>();
+		auto notificationPublicKey = test::GenerateRandomByteArray<Key>();
 
 		// Assert:
-		AssertValidation(ValidationResult::Success, accountPublicKey, state::AccountType::Remote, notificationKey);
+		AssertValidation(ValidationResult::Success, accountPublicKey, state::AccountType::Remote, notificationPublicKey);
 	}
 
 	TEST(TEST_CLASS, SuccessWhenAccountIsMainAndSender) {
