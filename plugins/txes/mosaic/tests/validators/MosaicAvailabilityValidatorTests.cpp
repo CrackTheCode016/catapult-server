@@ -100,7 +100,7 @@ namespace catapult { namespace validators {
 		AssertValidationResult(Failure_Mosaic_Expired, cache, Height(999), notification);
 	}
 
-	TEST(TEST_CLASS, FailureWhenownerIsNotMosaicOwner) {
+	TEST(TEST_CLASS, FailureWhenNotificationOwnerIsNotMosaicOwner) {
 		// Arrange:
 		auto owner = test::GenerateRandomByteArray<Key>();
 		auto properties = test::CreateMosaicPropertiesFromValues(0, 3, 200);
