@@ -8,6 +8,7 @@
  mongo-c-driver/1.16.1@bincrafters/stable
  mongo-cxx-driver/3.3.0@bincrafters/stable
  zlib/1.2.11@conan/stable
+ openssl/1.1.1f
 
 [generators]
  cmake
