@@ -26,27 +26,15 @@ find_package(GTest REQUIRED)
 ### setup openssl
 message("--- locating openssl dependencies ---")
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-	# https://gitlab.kitware.com/cmake/cmake/issues/16885
-	set(OPENSSL_INCLUDE_DIR ${OPENSSL_ROOT_DIR}/include)
-	list(APPEND OPENSSL_LIBS ${OPENSSL_ROOT_DIR}/lib/libssl.dylib)
-	list(APPEND OPENSSL_LIBS ${OPENSSL_ROOT_DIR}/lib/libcrypto.dylib)
+find_package(OpenSSL REQUIRED)
+list(APPEND OPENSSL_LIBS ${OpenSSL_LIBRARIES})
 
-	message("OpenSSL root: ${OPENSSL_ROOT_DIR}")
-else()
-	find_package(OpenSSL REQUIRED)
-	list(APPEND OPENSSL_LIBS OpenSSL::SSL)
-
-	message("OpenSSL  ver: ${OPENSSL_VERSION}")
-	message("OpenSSL libs: ${OPENSSL_LIBRARIES}")
-endif()
-
-message("OpenSSL  inc: ${OPENSSL_INCLUDE_DIR}")
+message("OpenSSL  inc: ${OpenSSL_INCLUDE_DIR}")
 message("OpenSSL libs: ${OPENSSL_LIBS}")
 
 # used to add openssl dependencies to a target
 function(catapult_add_openssl_dependencies TARGET_NAME)
-	include_directories(${OPENSSL_INCLUDE_DIR})
+	include_directories(${OpenSSL_INCLUDE_DIR})
 	target_link_libraries(${TARGET_NAME} ${OPENSSL_LIBS})
 endfunction()
 
