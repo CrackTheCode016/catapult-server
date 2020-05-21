@@ -256,7 +256,7 @@ function(catapult_target TARGET_NAME)
 	target_link_libraries(${TARGET_NAME} ${boost_LIBRARIES})
 
 	# copy boost shared libraries
-	foreach(BOOST_COMPONENT ATOMIC SYSTEM DATE_TIME REGEX TIMER CHRONO LOG THREAD FILESYSTEM PROGRAM_OPTIONS)
+	foreach(BOOST_COMPONENT atomic system date_time regex timer chrono log thread filesystem program_i)
 		if(MSVC)
 			# copy into ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$(Configuration)
 			string(REPLACE ".lib" ".dll" BOOSTDLLNAME ${Boost_${BOOST_COMPONENT}_LIBRARY_RELEASE})
@@ -265,7 +265,7 @@ function(catapult_target TARGET_NAME)
 				"${BOOSTDLLNAME}" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$(Configuration)")
 		elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
 			# copy into ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/boost
-			set(BOOSTDLLNAME ${Boost_${BOOST_COMPONENT}_LIBRARY_RELEASE})
+			set(BOOSTDLLNAME ${boost_${BOOST_COMPONENT}})
 			set(BOOSTVERSION "${Boost_VERSION_MAJOR}.${Boost_VERSION_MINOR}.${Boost_VERSION_PATCH}")
 			get_filename_component(BOOSTFILENAME ${BOOSTDLLNAME} NAME)
 			add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
