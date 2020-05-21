@@ -141,20 +141,6 @@ elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
 	set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -g1")
 endif()
 
-
-
-if(APPLE) 
-	# use, i.e. don't skip the full RPATH for the build tree
-	set(CMAKE_SKIP_BUILD_RPATH FALSE)
-	# when building, don't use the install RPATH already
-	# (but later on when installing)
-	set(CMAKE_INSTALL_RPATH "@executable_path/./bin")
-	set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
-	# add the automatically determined parts of the RPATH
-	# which point to directories outside the build tree to the install RPATH
-	set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-endif()
-
 # set runpath for built binaries on linux
 if(("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU") OR ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" AND "${CMAKE_SYSTEM_NAME}" MATCHES "Linux"))
 	file(MAKE_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/boost")
