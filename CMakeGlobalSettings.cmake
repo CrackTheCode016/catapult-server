@@ -3,7 +3,6 @@ enable_testing()
 
 include(${CMAKE_BINARY_DIR}/conan_paths.cmake)
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
-conan_basic_setup(KEEP_RPATHS)
 
 ### enable ccache if available
 find_program(CCACHE_FOUND ccache)
@@ -142,11 +141,17 @@ elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
 	set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -g1")
 endif()
 
-if (APPLE)
-	set(CMAKE_INSTALL_RPATH "@executable_path/../bin")
-	message("RPATHCMAKE ${CMAKE_INSTALL_RPATH}")
-	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--enable-new-dtags")
-	set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+
+
+if(APPLE) 
+	# use, i.e. don't skip the full RPATH for the build tree
+	set(CMAKE_SKIP_BUILD_RPATH FALSE)
+	# when building, don't use the install RPATH already
+	# (but later on when installing)
+	set(CMAKE_INSTALL_RPATH "@executable_path/./bin")
+	set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
+	# add the automatically determined parts of the RPATH
+	# which point to directories outside the build tree to the install RPATH
 	set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 endif()
 

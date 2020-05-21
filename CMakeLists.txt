@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.14)
 project(catapult_server)
 include(CMakeGlobalSettings.cmake)
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
-conan_basic_setup(KEEP_RPATHS)
 option(ENABLE_CODE_COVERAGE "Enable code coverage" OFF)
 option(ENABLE_TESTS "Enable tests" ON)
 

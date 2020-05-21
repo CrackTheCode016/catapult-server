@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 include(${CMAKE_BINARY_DIR}/conan_paths.cmake)
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
-conan_basic_setup(KEEP_RPATHS)
+
 # find and set benchmark includes
 function(catapult_add_benchmark_dependencies TARGET_NAME)
 	find_package(benchmark REQUIRED)

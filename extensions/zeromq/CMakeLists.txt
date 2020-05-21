@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 include(${CMAKE_BINARY_DIR}/conan_paths.cmake)
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
-conan_basic_setup(KEEP_RPATHS)
+
 message("--- locating zeromq dependencies ---")
 # ZeroMQ does not support CMake for now, pkg-config fallback will be done by cppzmqConfig.cmake
 find_package(cppzmq REQUIRED)
