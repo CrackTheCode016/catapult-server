@@ -66,6 +66,7 @@ namespace catapult { namespace test {
 	}
 
 	void AssertEqualVerifiableEntityData(const model::VerifiableEntity& entity, const bsoncxx::document::view& dbEntity) {
+		EXPECT_EQ(entity.Size, GetUint32(dbEntity, "size"));
 		EXPECT_EQ(entity.Signature, GetSignatureValue(dbEntity, "signature"));
 		AssertEqualEntityData(entity, dbEntity);
 	}
@@ -95,8 +96,8 @@ namespace catapult { namespace test {
 	}
 
 	void AssertEqualBlockData(const model::Block& block, const bsoncxx::document::view& dbBlock) {
-		// - 5 fields from VerifiableEntity, 12 fields from Block
-		EXPECT_EQ(17u, GetFieldCount(dbBlock));
+		// - 6 fields from VerifiableEntity, 12 fields from Block
+		EXPECT_EQ(18u, GetFieldCount(dbBlock));
 		AssertEqualVerifiableEntityData(block, dbBlock);
 
 		EXPECT_EQ(block.Height, Height(GetUint64(dbBlock, "height")));
@@ -111,7 +112,7 @@ namespace catapult { namespace test {
 		EXPECT_EQ(block.TransactionsHash, GetHashValue(dbBlock, "transactionsHash"));
 		EXPECT_EQ(block.ReceiptsHash, GetHashValue(dbBlock, "receiptsHash"));
 		EXPECT_EQ(block.StateHash, GetHashValue(dbBlock, "stateHash"));
-		EXPECT_EQ(block.BeneficiaryPublicKey, GetKeyValue(dbBlock, "beneficiaryPublicKey"));
+		EXPECT_EQ(block.BeneficiaryAddress, GetAddressValue(dbBlock, "beneficiaryAddress"));
 		EXPECT_EQ(block.FeeMultiplier, BlockFeeMultiplier(GetUint32(dbBlock, "feeMultiplier")));
 	}
 
@@ -255,6 +256,8 @@ namespace catapult { namespace test {
 		auto iter = dbCosignatures.cbegin();
 		for (const auto& expectedCosignature : expectedCosignatures) {
 			auto cosignatureView = iter->get_document().view();
+			EXPECT_EQ(3u, GetFieldCount(cosignatureView));
+			EXPECT_EQ(expectedCosignature.Version, GetUint64(cosignatureView, "version"));
 			EXPECT_EQ(expectedCosignature.SignerPublicKey, GetKeyValue(cosignatureView, "signerPublicKey"));
 			EXPECT_EQ(expectedCosignature.Signature, GetSignatureValue(cosignatureView, "signature"));
 			++iter;

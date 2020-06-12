@@ -114,13 +114,13 @@ namespace catapult { namespace net {
 				insertedReaderIter->second.pReader = pReader;
 
 				InsertOperation operation(true);
-				operation.Commit = [&lock = m_lock, pReader]() {
-					utils::SpinLockGuard guard2(lock);
-
+				operation.Commit = [pReader]() {
 					pReader->start();
 				};
 				operation.Abort = [this, qualifiedReaderId]() {
 					CATAPULT_LOG(warning) << "aborting incoming connection from " << qualifiedReaderId.first;
+
+					utils::SpinLockGuard guard2(m_lock);
 					closeSingle(qualifiedReaderId.first, qualifiedReaderId.second);
 				};
 
@@ -159,6 +159,7 @@ namespace catapult { namespace net {
 				pReader->stop();
 			}
 
+			// closeSingle needs to be called with lock
 			bool closeSingle(const model::NodeIdentity& identity, uint32_t id) {
 				auto iter = m_readers.find(std::make_pair(identity, id));
 				if (m_readers.end() == iter)
@@ -214,13 +215,13 @@ namespace catapult { namespace net {
 		class DefaultPacketReaders : public PacketReaders, public std::enable_shared_from_this<DefaultPacketReaders> {
 		public:
 			DefaultPacketReaders(
-					const std::shared_ptr<thread::IoThreadPool>& pPool,
+					thread::IoThreadPool& pool,
 					const ionet::ServerPacketHandlers& handlers,
 					const Key& serverPublicKey,
 					const ConnectionSettings& settings,
 					uint32_t maxConnectionsPerIdentity)
 					: m_handlers(handlers)
-					, m_pClientConnector(CreateClientConnector(pPool, serverPublicKey, settings, "readers"))
+					, m_pClientConnector(CreateClientConnector(pool, serverPublicKey, settings, "readers"))
 					, m_readers(maxConnectionsPerIdentity, settings.NodeIdentityEqualityStrategy)
 			{}
 
@@ -307,11 +308,11 @@ namespace catapult { namespace net {
 	}
 
 	std::shared_ptr<PacketReaders> CreatePacketReaders(
-			const std::shared_ptr<thread::IoThreadPool>& pPool,
+			thread::IoThreadPool& pool,
 			const ionet::ServerPacketHandlers& handlers,
 			const Key& serverPublicKey,
 			const ConnectionSettings& settings,
 			uint32_t maxConnectionsPerIdentity) {
-		return std::make_shared<DefaultPacketReaders>(pPool, handlers, serverPublicKey, settings, maxConnectionsPerIdentity);
+		return std::make_shared<DefaultPacketReaders>(pool, handlers, serverPublicKey, settings, maxConnectionsPerIdentity);
 	}
 }}

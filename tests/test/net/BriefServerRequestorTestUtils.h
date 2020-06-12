@@ -41,11 +41,17 @@ namespace catapult { namespace test {
 				: pPool(CreateStartedIoThreadPool())
 				, ServerPublicKey(GenerateRandomByteArray<Key>())
 				, ClientPublicKey(GenerateRandomByteArray<Key>())
-				, pRequestor(std::make_shared<TRequestor>(pPool, ClientPublicKey, createSettingsWithTimeout(timeout), requestorParam))
+				, pRequestor(std::make_shared<TRequestor>(*pPool, ClientPublicKey, createSettingsWithTimeout(timeout), requestorParam))
 		{}
 
+		/// Destroys the test context.
+		~BriefServerRequestorTestContext() {
+			// wait for the pool to stop
+			pPool->join();
+		}
+
 	public:
-		std::shared_ptr<thread::IoThreadPool> pPool;
+		std::unique_ptr<thread::IoThreadPool> pPool;
 
 		Key ServerPublicKey;
 		Key ClientPublicKey;

@@ -180,7 +180,6 @@ namespace catapult { namespace state {
 		}
 
 		// write mosaics
-		io::Write(output, accountState.Balances.optimizedMosaicId());
 		io::Write16(output, static_cast<uint16_t>(accountState.Balances.size()));
 		for (const auto& pair : accountState.Balances) {
 			io::Write(output, pair.first);
@@ -189,9 +188,9 @@ namespace catapult { namespace state {
 	}
 
 	namespace {
-		template<typename TKey>
-		void ReadSupplementalAccountKey(io::InputStream& input, AccountKeys::KeyAccessor<TKey>& keyAccessor) {
-			TKey key;
+		template<typename TAccountPublicKey>
+		void ReadSupplementalPublicKey(io::InputStream& input, AccountKeys::KeyAccessor<TAccountPublicKey>& keyAccessor) {
+			TAccountPublicKey key;
 			input.read(key);
 			keyAccessor.set(key);
 		}
@@ -200,16 +199,16 @@ namespace catapult { namespace state {
 			auto supplementalAccountKeysMask = static_cast<AccountKeys::KeyType>(io::Read8(input));
 
 			if (HasFlag(AccountKeys::KeyType::Linked, supplementalAccountKeysMask))
-				ReadSupplementalAccountKey(input, accountKeys.linkedPublicKey());
+				ReadSupplementalPublicKey(input, accountKeys.linkedPublicKey());
 
 			if (HasFlag(AccountKeys::KeyType::VRF, supplementalAccountKeysMask))
-				ReadSupplementalAccountKey(input, accountKeys.vrfPublicKey());
+				ReadSupplementalPublicKey(input, accountKeys.vrfPublicKey());
 
 			if (HasFlag(AccountKeys::KeyType::Voting, supplementalAccountKeysMask))
-				ReadSupplementalAccountKey(input, accountKeys.votingPublicKey());
+				ReadSupplementalPublicKey(input, accountKeys.votingPublicKey());
 
 			if (HasFlag(AccountKeys::KeyType::Node, supplementalAccountKeysMask))
-				ReadSupplementalAccountKey(input, accountKeys.nodePublicKey());
+				ReadSupplementalPublicKey(input, accountKeys.nodePublicKey());
 		}
 
 		AccountState LoadAccountStateWithoutHistory(io::InputStream& input, ImportanceReader& importanceReader) {
@@ -239,12 +238,14 @@ namespace catapult { namespace state {
 			}
 
 			// read mosaics
-			accountState.Balances.optimize(io::Read<MosaicId>(input));
 			auto numMosaics = io::Read16(input);
 			for (auto i = 0u; i < numMosaics; ++i) {
 				auto mosaicId = io::Read<MosaicId>(input);
 				auto amount = io::Read<Amount>(input);
 				accountState.Balances.credit(mosaicId, amount);
+
+				if (0 == i)
+					accountState.Balances.optimize(mosaicId);
 			}
 
 			return accountState;

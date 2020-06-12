@@ -20,7 +20,6 @@
 
 #include "src/importance/ImportanceCalculator.h"
 #include "catapult/cache_core/AccountStateCache.h"
-#include "catapult/model/Address.h"
 #include "catapult/model/BlockChainConfiguration.h"
 #include "catapult/model/NetworkIdentifier.h"
 #include "catapult/state/AccountActivityBuckets.h"
@@ -50,13 +49,21 @@ namespace catapult { namespace importance {
 			return state::AccountActivityBuckets::ActivityBucket{ { fees, beneficiaryCount, 0 }, importanceHeight };
 		}
 
+		void Recalculate(
+				ImportanceCalculator& calculator,
+				model::ImportanceHeight importanceHeight,
+				cache::AccountStateCacheDelta& delta) {
+			delta.updateHighValueAccounts(Height(1));
+			calculator.recalculate(importanceHeight, delta);
+		}
+
 		void RecalculateTwice(
 				ImportanceCalculator& calculator,
 				model::ImportanceHeight importanceHeight,
 				cache::AccountStateCacheDelta& delta) {
 			// need to recalculate importance at two importance heights because importance is the minimum of two consecutive calculations
-			calculator.recalculate(importanceHeight - model::ImportanceHeight(1), delta);
-			calculator.recalculate(importanceHeight, delta);
+			Recalculate(calculator, importanceHeight - model::ImportanceHeight(1), delta);
+			Recalculate(calculator, importanceHeight, delta);
 		}
 
 		struct AccountSeed {
@@ -71,20 +78,31 @@ namespace catapult { namespace importance {
 			std::vector<state::AccountActivityBuckets::ActivityBucket> Buckets;
 		};
 
-		struct CacheHolder {
+		class CacheHolder {
+		private:
+			using LockedAccountStateCacheDelta = cache::LockedCacheDelta<cache::AccountStateCacheDelta>;
+
 		public:
-			explicit CacheHolder(Amount minBalance)
-					: Cache(cache::CacheConfiguration(), CreateAccountStateCacheOptions(minBalance))
-					, Delta(Cache.createDelta())
-			{}
+			explicit CacheHolder(Amount minBalance) : m_cache(cache::CacheConfiguration(), CreateAccountStateCacheOptions(minBalance)) {
+				resetDelta();
+			}
+
+		public:
+			auto& delta() {
+				return *(*m_pDelta);
+			}
+
+			state::AccountState& get(const Key& publicKey) {
+				return delta().find(publicKey).get();
+			}
 
 		public:
 			void seedDelta(const std::vector<AccountSeed>& accountSeeds, model::ImportanceHeight importanceHeight) {
 				uint8_t i = 0;
 				for (auto accountData : accountSeeds) {
 					auto key = Key{ { ++i } };
-					Delta->addAccount(key, Height(importanceHeight.unwrap()));
-					auto& accountState = Delta->find(key).get();
+					delta().addAccount(key, Height(importanceHeight.unwrap()));
+					auto& accountState = get(key);
 					accountState.Balances.credit(Harvesting_Mosaic_Id, accountData.Amount);
 					for (const auto& dataBucket : accountData.Buckets) {
 						accountState.ActivityBuckets.update(dataBucket.StartHeight, [&dataBucket](auto& bucket) {
@@ -94,14 +112,21 @@ namespace catapult { namespace importance {
 				}
 			}
 
-		public:
-			state::AccountState& get(const Key& publicKey) {
-				return Delta->find(publicKey).get();
+			void commit() {
+				// recalculate high value accounts before commit
+				delta().updateHighValueAccounts(Height(1));
+
+				m_cache.commit();
+
+				// reset delta because commit is destructive
+				resetDelta();
 			}
 
-		public:
-			cache::AccountStateCache Cache;
-			cache::LockedCacheDelta<cache::AccountStateCacheDelta> Delta;
+		private:
+			void resetDelta() {
+				m_pDelta.reset();
+				m_pDelta = std::make_unique<LockedAccountStateCacheDelta>(m_cache.createDelta());
+			}
 
 		private:
 			static cache::AccountStateCacheTypes::Options CreateAccountStateCacheOptions(Amount minBalance) {
@@ -109,6 +134,10 @@ namespace catapult { namespace importance {
 				options.MinHarvesterBalance = minBalance;
 				return options;
 			}
+
+		private:
+			cache::AccountStateCache m_cache;
+			std::unique_ptr<LockedAccountStateCacheDelta> m_pDelta;
 		};
 
 		template<typename TTraits>
@@ -143,7 +172,7 @@ namespace catapult { namespace importance {
 			auto pCalculator = CreateImportanceCalculator(config);
 
 			// Act:
-			RecalculateTwice(*pCalculator, Recalculation_Height, *holder.Delta);
+			RecalculateTwice(*pCalculator, Recalculation_Height, holder.delta());
 
 			const auto& accountState1 = holder.get(Key{ { 1 } });
 			const auto& accountState2 = holder.get(Key{ { 2 } });
@@ -207,10 +236,10 @@ namespace catapult { namespace importance {
 		auto pCalculator = CreateImportanceCalculator(config);
 
 		// Act:
-		RecalculateTwice(*pCalculator, Recalculation_Height, *holder.Delta);
+		RecalculateTwice(*pCalculator, Recalculation_Height, holder.delta());
 
 		// Assert:
-		AssertCumulativeImportance<TTraits>(*holder.Delta);
+		AssertCumulativeImportance<TTraits>(holder.delta());
 	}
 
 	ACTIVITY_BASED_TEST(PosSetsImportanceToZeroWhenAccountBalanceIsBelowMinimum) {
@@ -231,10 +260,10 @@ namespace catapult { namespace importance {
 		auto pCalculator = CreateImportanceCalculator(config);
 
 		// Act:
-		RecalculateTwice(*pCalculator, Recalculation_Height, *holder.Delta);
+		RecalculateTwice(*pCalculator, Recalculation_Height, holder.delta());
 
 		// Assert:
-		AssertCumulativeImportance<TTraits>(*holder.Delta);
+		AssertCumulativeImportance<TTraits>(holder.delta());
 		for (uint8_t i = 1; i <= Num_Account_States; ++i) {
 			// first four accounts have balance < MinHarvesterBalance
 			const auto& accountState = holder.get(Key{ { i } });
@@ -268,10 +297,10 @@ namespace catapult { namespace importance {
 		auto pCalculator2 = CreateImportanceCalculator(customConfig);
 
 		// Act:
-		RecalculateTwice(*pCalculator1, Recalculation_Height - model::ImportanceHeight(2), *holder.Delta);
+		RecalculateTwice(*pCalculator1, Recalculation_Height - model::ImportanceHeight(2), holder.delta());
 		auto importance1 = accountState.ImportanceSnapshots.current();
 
-		RecalculateTwice(*pCalculator2, Recalculation_Height, *holder.Delta);
+		RecalculateTwice(*pCalculator2, Recalculation_Height, holder.delta());
 		auto importance2 = accountState.ImportanceSnapshots.current();
 
 		// Assert:
@@ -293,23 +322,23 @@ namespace catapult { namespace importance {
 		auto pCalculator = CreateImportanceCalculator(config);
 
 		// Act:
-		pCalculator->recalculate(Recalculation_Height - model::ImportanceHeight(3), *holder.Delta);
+		Recalculate(*pCalculator, Recalculation_Height - model::ImportanceHeight(3), holder.delta());
 		auto importance1 = accountState.ImportanceSnapshots.current();
 
-		pCalculator->recalculate(Recalculation_Height - model::ImportanceHeight(2), *holder.Delta);
+		Recalculate(*pCalculator, Recalculation_Height - model::ImportanceHeight(2), holder.delta());
 		auto importance2 = accountState.ImportanceSnapshots.current();
 
 		// - increase importance of the account
 		TTraits::IncreaseImportance(accountState);
 
 		// - recalculate with increased importance
-		pCalculator->recalculate(Recalculation_Height - model::ImportanceHeight(1), *holder.Delta);
+		Recalculate(*pCalculator, Recalculation_Height - model::ImportanceHeight(1), holder.delta());
 		auto importance3 = accountState.ImportanceSnapshots.current();
 
-		pCalculator->recalculate(Recalculation_Height, *holder.Delta);
+		Recalculate(*pCalculator, Recalculation_Height, holder.delta());
 		auto importance4 = accountState.ImportanceSnapshots.current();
 
-		pCalculator->recalculate(Recalculation_Height + model::ImportanceHeight(10), *holder.Delta);
+		Recalculate(*pCalculator, Recalculation_Height + model::ImportanceHeight(10), holder.delta());
 		auto importance5 = accountState.ImportanceSnapshots.current();
 
 		// Assert:
@@ -334,7 +363,7 @@ namespace catapult { namespace importance {
 		auto pCalculator = CreateImportanceCalculator(config);
 
 		// Act:
-		pCalculator->recalculate(model::ImportanceHeight(1), *holder.Delta);
+		Recalculate(*pCalculator, model::ImportanceHeight(1), holder.delta());
 
 		// Assert:
 		EXPECT_LT(Importance(), holder.get(Key{ { 1 } }).ImportanceSnapshots.current());
@@ -356,7 +385,7 @@ namespace catapult { namespace importance {
 		auto pCalculator = CreateImportanceCalculator(config);
 
 		// Act:
-		RecalculateTwice(*pCalculator, Recalculation_Height, *holder.Delta);
+		RecalculateTwice(*pCalculator, Recalculation_Height, holder.delta());
 
 		// Assert:
 		const auto& referenceAccountState = holder.get(Key{ { 1 } });
@@ -395,7 +424,7 @@ namespace catapult { namespace importance {
 			auto pCalculator = CreateImportanceCalculator(config);
 
 			// Act:
-			RecalculateTwice(*pCalculator, Recalculation_Height, *holder.Delta);
+			RecalculateTwice(*pCalculator, Recalculation_Height, holder.delta());
 
 			// Assert:
 			Importance currentImportance;
@@ -439,7 +468,7 @@ namespace catapult { namespace importance {
 		auto pCalculator = CreateImportanceCalculator(config);
 
 		// Act:
-		RecalculateTwice(*pCalculator, Recalculation_Height, *holder.Delta);
+		RecalculateTwice(*pCalculator, Recalculation_Height, holder.delta());
 
 		// Assert:
 		auto importance1 = holder.get(Key{ { 1 } }).ImportanceSnapshots.current();
@@ -467,7 +496,7 @@ namespace catapult { namespace importance {
 		auto pCalculator = CreateImportanceCalculator(config);
 
 		// Act:
-		RecalculateTwice(*pCalculator, Recalculation_Height, *holder.Delta);
+		RecalculateTwice(*pCalculator, Recalculation_Height, holder.delta());
 
 		// Assert:
 		std::array<Importance, 4> importances;
@@ -502,29 +531,30 @@ namespace catapult { namespace importance {
 
 			CacheHolder holder(config.MinHarvesterBalance);
 			holder.seedDelta(accountSeeds, Recalculation_Height);
-			holder.Cache.commit();
+			holder.commit();
+
 			for (uint8_t i = 1u; i <= Num_Account_States; ++i) {
 				auto& accountState = holder.get(Key{ { i } });
 				if (1 == i % 2) {
 					accountState.Balances.debit(Harvesting_Mosaic_Id, Amount(1));
 					if (1 == i % 4)
-						holder.Delta->queueRemove(accountState.PublicKey, accountState.PublicKeyHeight);
+						holder.delta().queueRemove(accountState.PublicKey, accountState.PublicKeyHeight);
 				}
 			}
 
-			holder.Delta->commitRemovals();
-			auto pCalculator = CreateImportanceCalculator(config);
+			holder.delta().commitRemovals();
 
 			// Act:
-			pCalculator->recalculate(Recalculation_Height, *holder.Delta);
+			auto pCalculator = CreateImportanceCalculator(config);
+			Recalculate(*pCalculator, Recalculation_Height, holder.delta());
 
 			// Assert:
 			for (uint8_t i = 1u; i <= Num_Account_States; ++i) {
 				if (1 == i % 4) {
 					// note that this will not happen in real scenario
-					EXPECT_FALSE(holder.Delta->contains(Key{ { i } })) << "account " << i;
+					EXPECT_FALSE(holder.delta().contains(Key{ { i } })) << "account " << i;
 				} else {
-					const auto& buckets = holder.Delta->find(Key{ { i } }).get().ActivityBuckets;
+					const auto& buckets = holder.delta().find(Key{ { i } }).get().ActivityBuckets;
 					auto checker = (1 == i % 2) ? checkIneligibleBalance : checkEligibleBalance;
 					checker(buckets, i);
 				}

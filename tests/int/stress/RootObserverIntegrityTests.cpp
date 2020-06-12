@@ -37,6 +37,7 @@ namespace catapult { namespace extensions {
 		using NotifyMode = observers::NotifyMode;
 
 		constexpr auto Harvesting_Mosaic_Id = MosaicId(9876);
+		constexpr auto Network_Identifier = model::NetworkIdentifier::Mijin_Test;
 
 		Importance GetTotalChainImportance(uint32_t numAccounts) {
 			return Importance(numAccounts * (numAccounts + 1) / 2);
@@ -48,7 +49,7 @@ namespace catapult { namespace extensions {
 
 		model::BlockChainConfiguration CreateBlockChainConfiguration(uint32_t numAccounts) {
 			auto config = model::BlockChainConfiguration::Uninitialized();
-			config.Network.Identifier = model::NetworkIdentifier::Mijin_Test;
+			config.Network.Identifier = Network_Identifier;
 			config.HarvestingMosaicId = Harvesting_Mosaic_Id;
 			config.ImportanceGrouping = 123;
 			config.MaxDifficultyBlocks = 123;
@@ -64,7 +65,7 @@ namespace catapult { namespace extensions {
 			explicit TestContext(uint32_t numAccounts)
 					: m_pPluginManager(test::CreatePluginManagerWithRealPlugins(CreateBlockChainConfiguration(numAccounts)))
 					, m_cache(m_pPluginManager->createCache())
-					, m_specialAccountKey(test::GenerateRandomByteArray<Key>()) {
+					, m_specialAccountPublicKey(test::GenerateRandomByteArray<Key>()) {
 				// register mock transaction plugin so that BalanceTransferNotifications are produced and observed
 				// (MockTransaction Publish XORs recipient address, so XOR address resolver is required
 				// for proper roundtripping or else test will fail)
@@ -73,55 +74,59 @@ namespace catapult { namespace extensions {
 				// seed the "nemesis" / transfer account (this account is used to fund all other accounts)
 				auto delta = m_cache.createDelta();
 				auto& accountStateCache = delta.sub<cache::AccountStateCache>();
-				accountStateCache.addAccount(m_specialAccountKey, Height(1));
-				auto& accountState = accountStateCache.find(m_specialAccountKey).get();
+				accountStateCache.addAccount(m_specialAccountPublicKey, Height(1));
+				auto& accountState = accountStateCache.find(m_specialAccountPublicKey).get();
 				accountState.Balances.credit(Harvesting_Mosaic_Id, GetTotalChainBalance(numAccounts));
 				m_cache.commit(Height());
 			}
 
 		public:
-			// accounts are funded by "nemesis" account (startAccountId with 1M * baseUnit, startAccountId + 1 with 2M * baseUnit, ...)
-			void addAccounts(uint8_t startAccountId, uint8_t numAccounts, Height height, uint8_t baseUnit = 1) {
+			// accounts are funded by "nemesis" account
+			// (startAccountShortId with 1M * baseUnit, startAccountShortId + 1 with 2M * baseUnit, ...)
+			void addAccounts(uint8_t startAccountShortId, uint8_t numAccounts, Height height, uint8_t baseUnit = 1) {
 				auto& transactions = m_heightToTransactions[height];
 
-				for (uint8_t i = startAccountId; i < startAccountId + numAccounts; ++i) {
-					uint8_t multiplier = i - startAccountId + 1;
+				for (uint8_t i = startAccountShortId; i < startAccountShortId + numAccounts; ++i) {
+					uint8_t multiplier = i - startAccountShortId + 1;
 					auto pTransaction = mocks::CreateTransactionWithFeeAndTransfers(Amount(), {
 						{ test::UnresolveXor(Harvesting_Mosaic_Id), Amount(multiplier * baseUnit * 1'000'000) }
 					});
-					pTransaction->SignerPublicKey = m_specialAccountKey;
+					pTransaction->SignerPublicKey = m_specialAccountPublicKey;
 					pTransaction->RecipientPublicKey = Key{ { i } };
+					pTransaction->Network = Network_Identifier;
 					transactions.push_back(std::move(pTransaction));
 				}
 			}
 
 			// send entire balance of all accounts to "nemesis" account
-			void zeroBalances(uint8_t startAccountId, uint8_t numAccounts, Height height) {
+			void zeroBalances(uint8_t startAccountShortId, uint8_t numAccounts, Height height) {
 				auto& transactions = m_heightToTransactions[height];
 
 				auto accountStateCacheView = m_cache.sub<cache::AccountStateCache>().createView();
-				for (uint8_t i = startAccountId; i < startAccountId + numAccounts; ++i) {
+				for (uint8_t i = startAccountShortId; i < startAccountShortId + numAccounts; ++i) {
 					const auto& accountState = accountStateCacheView->find(Key{ { i } }).get();
 					auto pTransaction = mocks::CreateTransactionWithFeeAndTransfers(Amount(), {
 						{ test::UnresolveXor(Harvesting_Mosaic_Id), accountState.Balances.get(Harvesting_Mosaic_Id) }
 					});
 					pTransaction->SignerPublicKey = Key{ { i } };
-					pTransaction->RecipientPublicKey = m_specialAccountKey;
+					pTransaction->RecipientPublicKey = m_specialAccountPublicKey;
+					pTransaction->Network = Network_Identifier;
 					transactions.push_back(std::move(pTransaction));
 				}
 			}
 
-			// send entire balance of accountId1 to accountId2
-			void moveBalance(uint8_t accountId1, uint8_t accountId2, Height height) {
+			// send entire balance of accountShortId1 to accountShortId2
+			void moveBalance(uint8_t accountShortId1, uint8_t accountShortId2, Height height) {
 				auto& transactions = m_heightToTransactions[height];
 
 				auto accountStateCacheView = m_cache.sub<cache::AccountStateCache>().createView();
-				const auto& accountState1 = accountStateCacheView->find(Key{ { accountId1 } }).get();
+				const auto& accountState1 = accountStateCacheView->find(Key{ { accountShortId1 } }).get();
 				auto pTransaction = mocks::CreateTransactionWithFeeAndTransfers(Amount(), {
 					{ test::UnresolveXor(Harvesting_Mosaic_Id), accountState1.Balances.get(Harvesting_Mosaic_Id) }
 				});
 				pTransaction->SignerPublicKey = accountState1.PublicKey;
-				pTransaction->RecipientPublicKey = Key{ { accountId2 } };
+				pTransaction->RecipientPublicKey = Key{ { accountShortId2 } };
+				pTransaction->Network = Network_Identifier;
 				transactions.push_back(std::move(pTransaction));
 			}
 
@@ -147,6 +152,7 @@ namespace catapult { namespace extensions {
 				else
 					chain::RollbackBlock(blockElement, blockExecutionContext);
 
+				delta.sub<cache::AccountStateCache>().updateHighValueAccounts(height);
 				m_cache.commit(height);
 			}
 
@@ -164,32 +170,32 @@ namespace catapult { namespace extensions {
 			struct AssertOptions {
 			public:
 				AssertOptions(
-						uint8_t startAccountId,
+						uint8_t startAccountShortId,
 						uint8_t numAccounts,
 						model::ImportanceHeight importanceHeight,
 						uint8_t startAdjustment = 0)
-						: StartAccountId(startAccountId)
+						: StartAccountShortId(startAccountShortId)
 						, NumAccounts(numAccounts)
 						, ImportanceHeight(importanceHeight)
 						, StartAdjustment(startAdjustment)
 				{}
 
 			public:
-				uint8_t StartAccountId;
+				uint8_t StartAccountShortId;
 				uint8_t NumAccounts;
 				model::ImportanceHeight ImportanceHeight;
 				uint8_t StartAdjustment;
 			};
 
 			void assertSingleImportance(
-					uint8_t accountId,
+					uint8_t accountShortId,
 					model::ImportanceHeight expectedImportanceHeight,
 					Importance expectedImportance) {
-				const auto message = "importance for account " + std::to_string(accountId);
+				const auto message = "importance for account " + std::to_string(accountShortId);
 				auto accountStateCacheView = m_cache.sub<cache::AccountStateCache>().createView();
 
 				// tests only calculate importance once, therefore only the raw score in the bucket will be non-zero
-				const auto& accountState = accountStateCacheView->find(Key{ { accountId } }).get();
+				const auto& accountState = accountStateCacheView->find(Key{ { accountShortId } }).get();
 				EXPECT_EQ(expectedImportanceHeight, accountState.ImportanceSnapshots.height()) << message;
 				EXPECT_EQ(expectedImportance, Importance(accountState.ActivityBuckets.get(expectedImportanceHeight).RawScore)) << message;
 			}
@@ -206,9 +212,9 @@ namespace catapult { namespace extensions {
 				});
 			}
 
-			void assertRemovedAccounts(uint8_t startAccountId, uint8_t numAccounts) {
+			void assertRemovedAccounts(uint8_t startAccountShortId, uint8_t numAccounts) {
 				auto accountStateCacheView = m_cache.sub<cache::AccountStateCache>().createView();
-				for (uint8_t i = startAccountId; i < startAccountId + numAccounts; ++i)
+				for (uint8_t i = startAccountShortId; i < startAccountShortId + numAccounts; ++i)
 					EXPECT_FALSE(accountStateCacheView->contains(Key{ { i } })) << "importance for account " << static_cast<int>(i);
 			}
 
@@ -221,7 +227,7 @@ namespace catapult { namespace extensions {
 						: test::GenerateBlockWithTransactions(transactionsIter->second);
 				pBlock->Height = height;
 				pBlock->FeeMultiplier = BlockFeeMultiplier(0);
-				pBlock->BeneficiaryPublicKey = Key();
+				pBlock->BeneficiaryAddress = Address();
 
 				// in order to emulate correctly, block must have same signer when executed and reverted
 				auto signerIter = m_heightToBlockSigner.find(height);
@@ -234,8 +240,8 @@ namespace catapult { namespace extensions {
 			}
 
 			void assertImportances(const AssertOptions& options, const std::function<Importance (uint8_t)>& getImportanceFromMultiplier) {
-				for (uint8_t i = options.StartAccountId; i < options.StartAccountId + options.NumAccounts; ++i) {
-					uint8_t multiplier = options.StartAdjustment + i - options.StartAccountId + 1;
+				for (uint8_t i = options.StartAccountShortId; i < options.StartAccountShortId + options.NumAccounts; ++i) {
+					uint8_t multiplier = options.StartAdjustment + i - options.StartAccountShortId + 1;
 					assertSingleImportance(i, options.ImportanceHeight, getImportanceFromMultiplier(multiplier));
 				}
 			}
@@ -244,7 +250,7 @@ namespace catapult { namespace extensions {
 			std::shared_ptr<plugins::PluginManager> m_pPluginManager;
 			cache::CatapultCache m_cache;
 
-			Key m_specialAccountKey;
+			Key m_specialAccountPublicKey;
 
 			// undo tests require same block signer at heights (because HarvestFeeObserver needs to debit an existing account)
 			std::unordered_map<Height, Key, utils::BaseValueHasher<Height>> m_heightToBlockSigner;

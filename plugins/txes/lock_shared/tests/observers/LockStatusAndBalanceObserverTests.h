@@ -61,7 +61,7 @@ namespace catapult { namespace observers {
 						EXPECT_EQ(TTraits::Receipt_Type, receipt.Type);
 						EXPECT_EQ(lockInfo.MosaicId, receipt.Mosaic.MosaicId);
 						EXPECT_EQ(lockInfo.Amount, receipt.Mosaic.Amount);
-						EXPECT_EQ(accountState.PublicKey, receipt.TargetPublicKey);
+						EXPECT_EQ(accountState.Address, receipt.TargetAddress);
 					});
 		}
 
@@ -108,9 +108,9 @@ namespace catapult { namespace observers {
 				TCheckCacheFunc checkCache) {
 			// Arrange:
 			auto& accountStateCacheDelta = context.cache().template sub<cache::AccountStateCache>();
-			auto accountId = TTraits::DestinationAccount(lockInfo);
-			accountStateCacheDelta.addAccount(accountId, Height(1));
-			auto& accountState = accountStateCacheDelta.find(accountId).get();
+			auto accountIdentifier = TTraits::DestinationAccount(lockInfo);
+			accountStateCacheDelta.addAccount(accountIdentifier, Height(1));
+			auto& accountState = accountStateCacheDelta.find(accountIdentifier).get();
 
 			auto& lockInfoCacheDelta = context.cache().template sub<typename TTraits::BasicTraits::CacheType>();
 			seedCache(lockInfoCacheDelta, accountState);

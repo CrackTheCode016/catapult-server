@@ -22,6 +22,7 @@
 #include "catapult/cache_core/AccountStateCache.h"
 #include "catapult/model/BlockChainConfiguration.h"
 #include "tests/test/MosaicCacheTestUtils.h"
+#include "tests/test/MosaicTestUtils.h"
 #include "tests/test/cache/CacheTestUtils.h"
 #include "tests/test/plugins/ValidatorTestUtils.h"
 #include "tests/TestHarness.h"
@@ -35,14 +36,14 @@ namespace catapult { namespace validators {
 #define SUPPLY_CHANGE_TEST_CLASS SupplyChangeMaxMosaicsValidatorTests
 
 	namespace {
-		template<typename TKey>
-		auto CreateAndSeedCache(const TKey& key) {
+		template<typename TAccountIdentifier>
+		auto CreateAndSeedCache(const TAccountIdentifier& accountIdentifier) {
 			auto cache = test::CoreSystemCacheFactory::Create(model::BlockChainConfiguration::Uninitialized());
 			{
 				auto cacheDelta = cache.createDelta();
 				auto& accountStateCacheDelta = cacheDelta.sub<cache::AccountStateCache>();
-				accountStateCacheDelta.addAccount(key, Height());
-				auto& accountState = accountStateCacheDelta.find(key).get();
+				accountStateCacheDelta.addAccount(accountIdentifier, Height());
+				auto& accountState = accountStateCacheDelta.find(accountIdentifier).get();
 				for (auto i = 0u; i < 5; ++i)
 					accountState.Balances.credit(MosaicId(i + 1), Amount(1));
 
@@ -54,13 +55,12 @@ namespace catapult { namespace validators {
 
 		void RunBalanceTransferTest(ValidationResult expectedResult, uint16_t maxMosaics, UnresolvedMosaicId mosaicId, Amount amount) {
 			// Arrange:
-			auto owner = test::GenerateRandomByteArray<Key>();
 			auto recipient = test::GenerateRandomByteArray<Address>();
 			auto unresolvedRecipient = test::UnresolveXor(recipient);
 			auto cache = CreateAndSeedCache(recipient);
 
 			auto pValidator = CreateMaxMosaicsBalanceTransferValidator(maxMosaics);
-			auto notification = model::BalanceTransferNotification(owner, unresolvedRecipient, mosaicId, amount);
+			auto notification = model::BalanceTransferNotification(Address(), unresolvedRecipient, mosaicId, amount);
 
 			// Act:
 			auto result = test::ValidateNotification(*pValidator, notification, cache);
@@ -101,7 +101,7 @@ namespace catapult { namespace validators {
 				UnresolvedMosaicId mosaicId,
 				model::MosaicSupplyChangeAction action) {
 			// Arrange:
-			auto owner = test::GenerateRandomByteArray<Key>();
+			auto owner = test::CreateRandomOwner();
 			auto cache = CreateAndSeedCache(owner);
 
 			auto pValidator = CreateMaxMosaicsSupplyChangeValidator(maxMosaics);

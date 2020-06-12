@@ -49,16 +49,18 @@ namespace catapult { namespace extensions {
 			"TransactionFeeActivityObserver",
 			"HarvestFeeObserver",
 			"TotalTransactionsObserver",
+			"HighValueAccountCommitObserver",
 			"VotingKeyLinkObserver",
 			"VrfKeyLinkObserver",
 			"RecalculateImportancesObserver",
-			"BlockStatisticObserver",
-			"BlockStatisticPruningObserver"
+			"HighValueAccountRollbackObserver",
+			"BlockStatisticObserver"
 		};
 		EXPECT_EQ(expectedObserverNames, config.pObserver->names());
 
 		std::vector<std::string> expectedValidatorNames{
 			"AddressValidator",
+			"PublicKeyValidator",
 			"DeadlineValidator",
 			"NemesisSinkValidator",
 			"EligibleHarvesterValidator",

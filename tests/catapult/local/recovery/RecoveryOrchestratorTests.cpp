@@ -32,6 +32,7 @@
 #include "tests/catapult/local/recovery/test/FilechainTestUtils.h"
 #include "tests/test/core/BlockStorageTestUtils.h"
 #include "tests/test/core/BlockTestUtils.h"
+#include "tests/test/core/StateTestUtils.h"
 #include "tests/test/core/StorageTestUtils.h"
 #include "tests/test/core/TransactionStatusTestUtils.h"
 #include "tests/test/local/BlockStateHash.h"
@@ -50,17 +51,9 @@ namespace catapult { namespace local {
 	namespace {
 		// region PrepareRandomBlocks
 
-		std::vector<Address> GenerateRandomAddresses(size_t count) {
-			std::vector<Address> addresses;
-			for (auto i = 0u; i < count; ++i)
-				addresses.push_back(test::GenerateRandomAddress());
-
-			return addresses;
-		}
-
 		auto PrepareRandomBlocks(const config::CatapultDirectory& dataDirectory, uint64_t numBlocks) {
 			std::vector<uint64_t> scores;
-			auto recipients = GenerateRandomAddresses(numBlocks);
+			auto recipients = test::GenerateRandomAddresses(numBlocks);
 
 			// generate block per every recipient, each with random number of transactions
 			auto height = 2u;
@@ -88,12 +81,10 @@ namespace catapult { namespace local {
 
 		// region state saving
 
-		cache::SupplementalData CreateDeterministicSupplementalData() {
+		cache::SupplementalData CreateSupplementalDataWithDeterministicChainScore() {
 			cache::SupplementalData supplementalData;
 			supplementalData.ChainScore = model::ChainScore(0x1234567890ABCDEF, 0xFEDCBA0987654321);
-			supplementalData.State.LastRecalculationHeight = model::ImportanceHeight(12345);
-			supplementalData.State.DynamicFeeMultiplier = BlockFeeMultiplier(334455);
-			supplementalData.State.NumTotalTransactions = 7654321;
+			supplementalData.State = test::CreateRandomCatapultState();
 			return supplementalData;
 		}
 
@@ -133,7 +124,7 @@ namespace catapult { namespace local {
 			if (Height() == cacheHeight)
 				return;
 
-			auto supplementalData = CreateDeterministicSupplementalData();
+			auto supplementalData = CreateSupplementalDataWithDeterministicChainScore();
 
 			// - seed with nemesis block, so that nemesis accounts have proper balances
 			test::LocalNodeTestState state(pluginManager.createCache());
@@ -483,7 +474,7 @@ namespace catapult { namespace local {
 				// create empty blocks to simplify setup required for undo
 				auto pBlock = test::GenerateBlockWithTransactions(0, height);
 				pBlock->FeeMultiplier = BlockFeeMultiplier(0);
-				pBlock->BeneficiaryPublicKey = pBlock->SignerPublicKey;
+				pBlock->BeneficiaryAddress = model::GetSignerAddress(*pBlock);
 				storage.saveBlock(test::BlockToBlockElement(*pBlock, test::GenerateRandomByteArray<Hash256>()));
 			}
 		}

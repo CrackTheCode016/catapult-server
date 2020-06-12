@@ -22,6 +22,7 @@
 #include "harvesting/src/UnlockedAccounts.h"
 #include "harvesting/src/UnlockedFileQueueConsumer.h"
 #include "catapult/io/FileQueue.h"
+#include "catapult/model/Address.h"
 #include "catapult/model/BlockChainConfiguration.h"
 #include "harvesting/tests/test/HarvestRequestEncryptedPayload.h"
 #include "tests/test/cache/CacheTestUtils.h"
@@ -40,7 +41,10 @@ namespace catapult { namespace harvesting {
 
 		class TestContext {
 		public:
-			TestContext()
+			enum class SeedOptions { Address, Public_Key };
+
+		public:
+			explicit TestContext(SeedOptions seedOptions = SeedOptions::Public_Key)
 					: m_dataDirectory(config::CatapultDataDirectory(m_directoryGuard.name()))
 					, m_config(CreateBlockChainConfiguration())
 					, m_cache(test::CreateEmptyCatapultCache(m_config))
@@ -48,10 +52,14 @@ namespace catapult { namespace harvesting {
 					, m_keyPair(test::GenerateKeyPair())
 					, m_updater(m_cache, m_unlockedAccounts, m_keyPair, m_dataDirectory) {
 				auto descriptor = BlockGeneratorAccountDescriptor(test::GenerateKeyPair(), test::GenerateKeyPair());
-				auto signingKeyPair = descriptor.signingKeyPair().publicKey();
+				auto signingPublicKey = descriptor.signingKeyPair().publicKey();
 				auto vrfPublicKey = descriptor.vrfKeyPair().publicKey();
 				m_unlockedAccounts.modifier().add(std::move(descriptor));
-				addMainAccount(signingKeyPair, vrfPublicKey, Amount(1234));
+
+				if (SeedOptions::Public_Key == seedOptions)
+					addMainAccount(signingPublicKey, vrfPublicKey, Amount(1234));
+				else
+					addMainAccount(model::PublicKeyToAddress(signingPublicKey, m_config.Network.Identifier), vrfPublicKey, Amount(1234));
 			}
 
 		public:
@@ -138,12 +146,13 @@ namespace catapult { namespace harvesting {
 			}
 
 		private:
-			void addMainAccount(const Key& signingPublicKey, const Key& vrfPublicKey, Amount balance) {
+			template<typename TAccountIdentifier>
+			void addMainAccount(const TAccountIdentifier& accountIdentifier, const Key& vrfPublicKey, Amount balance) {
 				auto delta = m_cache.createDelta();
 				auto& accountStateCache = delta.sub<cache::AccountStateCache>();
 
-				accountStateCache.addAccount(signingPublicKey, Height(100));
-				auto mainAccountStateIter = accountStateCache.find(signingPublicKey);
+				accountStateCache.addAccount(accountIdentifier, Height(100));
+				auto mainAccountStateIter = accountStateCache.find(accountIdentifier);
 				mainAccountStateIter.get().Balances.credit(Harvesting_Mosaic_Id, balance);
 				mainAccountStateIter.get().ImportanceSnapshots.set(Importance(1000), model::ImportanceHeight(100));
 				mainAccountStateIter.get().SupplementalAccountKeys.vrfPublicKey().set(vrfPublicKey);
@@ -199,7 +208,7 @@ namespace catapult { namespace harvesting {
 
 		// region test utils
 
-		void ResetAccountKey(state::AccountKeys::KeyAccessor<Key>& keyAccessor) {
+		void SetRandom(state::AccountKeys::KeyAccessor<Key>& keyAccessor) {
 			keyAccessor.unset();
 			keyAccessor.set(test::GenerateRandomByteArray<Key>());
 		}
@@ -293,19 +302,19 @@ namespace catapult { namespace harvesting {
 
 	TEST(TEST_CLASS, UpdateBypassesInvalidAccount_MismatchedLinkedPublicKey) {
 		AssertUpdateBypasses([](auto& accountState) {
-			ResetAccountKey(accountState.SupplementalAccountKeys.linkedPublicKey());
+			SetRandom(accountState.SupplementalAccountKeys.linkedPublicKey());
 		});
 	}
 
 	TEST(TEST_CLASS, UpdateBypassesInvalidAccount_MismatchedVrfPublicKey) {
 		AssertUpdateBypasses([](auto& accountState) {
-			ResetAccountKey(accountState.SupplementalAccountKeys.vrfPublicKey());
+			SetRandom(accountState.SupplementalAccountKeys.vrfPublicKey());
 		});
 	}
 
 	TEST(TEST_CLASS, UpdateBypassesInvalidAccount_MismatchedNodePublicKey) {
 		AssertUpdateBypasses([](auto& accountState) {
-			ResetAccountKey(accountState.SupplementalAccountKeys.nodePublicKey());
+			SetRandom(accountState.SupplementalAccountKeys.nodePublicKey());
 		});
 	}
 
@@ -316,6 +325,20 @@ namespace catapult { namespace harvesting {
 	TEST(TEST_CLASS, UpdateDoesNotPruneValidHarvester) {
 		// Arrange: test context always contains single unlocked account
 		TestContext context;
+
+		// Sanity:
+		EXPECT_EQ(1u, context.numUnlockedAccounts());
+
+		// Act:
+		context.update();
+
+		// Assert:
+		EXPECT_EQ(1u, context.numUnlockedAccounts());
+	}
+
+	TEST(TEST_CLASS, UpdateDoesNotPruneValidHarvesterWhenSigningPublicKeyIsNotInCache) {
+		// Arrange:
+		TestContext context(TestContext::SeedOptions::Address);
 
 		// Sanity:
 		EXPECT_EQ(1u, context.numUnlockedAccounts());
@@ -376,19 +399,19 @@ namespace catapult { namespace harvesting {
 	TEST(TEST_CLASS, UpdateSavePrunesMismatchedLinkedPublicKeyAccounts) {
 		// Assert: linkedPublicKey mismatch is fatal error raised by RequireLinkedRemoteAndMainAccounts indicating state corruption
 		EXPECT_THROW(AssertPruned([](auto& accountState) {
-			ResetAccountKey(accountState.SupplementalAccountKeys.linkedPublicKey());
+			SetRandom(accountState.SupplementalAccountKeys.linkedPublicKey());
 		}), catapult_runtime_error);
 	}
 
 	TEST(TEST_CLASS, UpdateSavePrunesMismatchedVrfPublicKeyAccounts) {
 		AssertPruned([](auto& accountState) {
-			ResetAccountKey(accountState.SupplementalAccountKeys.vrfPublicKey());
+			SetRandom(accountState.SupplementalAccountKeys.vrfPublicKey());
 		});
 	}
 
 	TEST(TEST_CLASS, UpdateSavePrunesMismatchedNodePublicKeyAccounts) {
 		AssertPruned([](auto& accountState) {
-			ResetAccountKey(accountState.SupplementalAccountKeys.nodePublicKey());
+			SetRandom(accountState.SupplementalAccountKeys.nodePublicKey());
 		});
 	}
 

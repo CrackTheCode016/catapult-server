@@ -69,6 +69,8 @@ namespace catapult { namespace extensions {
 
 				pAccountState->Balances.credit(Harvesting_Mosaic_Id, Amount(10));
 				test::RandomFillAccountData(i, *pAccountState);
+
+				cacheDelta.updateHighValueAccounts(Height(1));
 			}
 		}
 
@@ -98,9 +100,7 @@ namespace catapult { namespace extensions {
 		cache::SupplementalData CreateDeterministicSupplementalData() {
 			cache::SupplementalData supplementalData;
 			supplementalData.ChainScore = model::ChainScore(0x1234567890ABCDEF, 0xFEDCBA0987654321);
-			supplementalData.State.LastRecalculationHeight = model::ImportanceHeight(12345);
-			supplementalData.State.DynamicFeeMultiplier = BlockFeeMultiplier(334455);
-			supplementalData.State.NumTotalTransactions = 7654321;
+			supplementalData.State = test::CreateDeterministicCatapultState();
 			return supplementalData;
 		}
 
@@ -227,6 +227,7 @@ namespace catapult { namespace extensions {
 		auto cacheView = loadedState.ref().Cache.createView();
 		auto expectedState = state::CatapultState();
 		expectedState.LastRecalculationHeight = model::ImportanceHeight(1);
+		expectedState.LastFinalizedHeight = Height(1);
 		expectedState.DynamicFeeMultiplier = BlockFeeMultiplier(1);
 		expectedState.NumTotalTransactions = 31 + 11;
 		test::AssertEqual(expectedState, cacheView.dependentState());
@@ -357,10 +358,12 @@ namespace catapult { namespace extensions {
 
 			auto expectedView = originalCache.createView();
 			auto actualView = loadedState.ref().Cache.createView();
+			const auto& expectedAccountStateCache = expectedView.sub<cache::AccountStateCache>();
 			const auto& actualAccountStateCache = actualView.sub<cache::AccountStateCache>();
+
 			EXPECT_EQ(0u, actualAccountStateCache.size());
-			EXPECT_FALSE(actualAccountStateCache.highValueAddresses().empty());
-			EXPECT_EQ(expectedView.sub<cache::AccountStateCache>().highValueAddresses(), actualAccountStateCache.highValueAddresses());
+			EXPECT_FALSE(actualAccountStateCache.highValueAccounts().addresses().empty());
+			EXPECT_EQ(expectedAccountStateCache.highValueAccounts().addresses(), actualAccountStateCache.highValueAccounts().addresses());
 			EXPECT_EQ(expectedView.sub<cache::BlockStatisticCache>().size(), actualView.sub<cache::BlockStatisticCache>().size());
 
 			EXPECT_EQ(3u, test::CountFilesAndDirectories(stateDirectory.path()));

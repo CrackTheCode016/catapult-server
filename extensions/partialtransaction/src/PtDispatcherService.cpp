@@ -39,7 +39,6 @@
 
 using namespace catapult::consumers;
 using namespace catapult::disruptor;
-using namespace catapult::extensions;
 
 namespace catapult { namespace partialtransaction {
 
@@ -68,7 +67,7 @@ namespace catapult { namespace partialtransaction {
 			return std::make_unique<ConsumerDispatcher>(options, consumers, reclaimMemoryInspector);
 		}
 
-		auto CreateKnownHashPredicate(const cache::MemoryPtCacheProxy& ptCache, ServiceState& state) {
+		auto CreateKnownHashPredicate(const cache::MemoryPtCacheProxy& ptCache, extensions::ServiceState& state) {
 			const auto& utCache = const_cast<const extensions::ServiceState&>(state).utCache();
 			auto knownHashPredicate = state.hooks().knownHashPredicate(utCache);
 			return [&ptCache, knownHashPredicate](auto timestamp, const auto& hash) {
@@ -217,7 +216,7 @@ namespace catapult { namespace partialtransaction {
 		}
 
 		std::unique_ptr<chain::PtUpdater> CreateAndRegisterPtUpdater(cache::MemoryPtCacheProxy& ptCache, extensions::ServiceState& state) {
-			auto pUpdaterPool = state.pool().pushIsolatedPool("ptUpdater");
+			auto* pUpdaterPool = state.pool().pushIsolatedPool("ptUpdater");
 
 			// validator needs to be created here because bootstrapper does not have cache nor all validators registered
 			auto pValidator = chain::CreatePtValidator(state.cache(), state.timeSupplier(), state.pluginManager());
@@ -231,20 +230,20 @@ namespace catapult { namespace partialtransaction {
 						consumer(model::TransactionRange::FromEntity(std::move(pTransaction)));
 					},
 					extensions::SubscriberToSink(state.transactionStatusSubscriber()),
-					pUpdaterPool);
+					*pUpdaterPool);
 		}
 
-		class PtDispatcherServiceRegistrar : public ServiceRegistrar {
+		class PtDispatcherServiceRegistrar : public extensions::ServiceRegistrar {
 		public:
-			ServiceRegistrarInfo info() const override {
-				return { "PtDispatcher", ServiceRegistrarPhase::Post_Range_Consumers };
+			extensions::ServiceRegistrarInfo info() const override {
+				return { "PtDispatcher", extensions::ServiceRegistrarPhase::Post_Range_Consumers };
 			}
 
-			void registerServiceCounters(ServiceLocator& locator) override {
+			void registerServiceCounters(extensions::ServiceLocator& locator) override {
 				extensions::AddDispatcherCounters(locator, Service_Name, "PT");
 			}
 
-			void registerServices(ServiceLocator& locator, ServiceState& state) override {
+			void registerServices(extensions::ServiceLocator& locator, extensions::ServiceState& state) override {
 				// partial transaction updater
 				auto& ptCache = GetMemoryPtCache(locator);
 				auto pPtUpdater = CreateAndRegisterPtUpdater(ptCache, state);
@@ -263,7 +262,7 @@ namespace catapult { namespace partialtransaction {
 		};
 	}
 
-	std::unique_ptr<ServiceRegistrar> CreatePtDispatcherServiceRegistrar() {
+	std::unique_ptr<extensions::ServiceRegistrar> CreatePtDispatcherServiceRegistrar() {
 		return std::make_unique<PtDispatcherServiceRegistrar>();
 	}
 }}

@@ -20,12 +20,15 @@
 
 #include "catapult/cache_core/AccountStateCacheUtils.h"
 #include "catapult/cache_core/AccountStateCache.h"
+#include "catapult/model/Address.h"
 #include "tests/test/cache/AccountStateCacheTestUtils.h"
 #include "tests/TestHarness.h"
 
 namespace catapult { namespace cache {
 
 #define TEST_CLASS AccountStateCacheUtilsTests
+
+	// region test context
 
 	namespace {
 		class TestContext {
@@ -40,64 +43,95 @@ namespace catapult { namespace cache {
 				return *m_pDelta;
 			}
 
-			auto addAccount(const Key& publicKey) {
+			template<typename TAccountIdentifier>
+			auto addAccount(const TAccountIdentifier& accountIdentifier) {
 				auto& cacheDelta = cache();
-				cacheDelta.addAccount(publicKey, Height(123));
-				return cacheDelta.find(publicKey);
+				cacheDelta.addAccount(accountIdentifier, Height(123));
+				return cacheDelta.find(accountIdentifier);
 			}
 
-			void addAccount(const Key& publicKey, state::AccountType accountType, const Key& remoteKey) {
-				auto accountStateIter = addAccount(publicKey);
+			void addAccount(const Key& mainPublicKey, state::AccountType accountType, const Key& remotePublicKey) {
+				auto accountStateIter = addAccount(mainPublicKey);
 				accountStateIter.get().AccountType = accountType;
-				accountStateIter.get().SupplementalAccountKeys.linkedPublicKey().set(remoteKey);
+				accountStateIter.get().SupplementalAccountKeys.linkedPublicKey().set(remotePublicKey);
 			}
 
 		private:
 			cache::AccountStateCache m_cache;
 			cache::LockedCacheDelta<cache::AccountStateCacheDelta> m_pDelta;
 		};
+
+		Address ToAddress(const Key& key) {
+			return model::PublicKeyToAddress(key, test::CreateDefaultAccountStateCacheOptions().NetworkIdentifier);
+		}
 	}
+
+	// endregion
+
+	// region traits
+
+	namespace {
+		struct DeltaTraits {
+			static cache::AccountStateCacheDelta& GetCache(TestContext& context) {
+				return context.cache();
+			}
+		};
+
+		struct ReadOnlyTraits {
+			static cache::ReadOnlyAccountStateCache GetCache(TestContext& context) {
+				return context.cache().asReadOnly();
+			}
+		};
+	}
+
+#define CACHE_BASED_TEST(TEST_NAME) \
+	template<typename TTraits> void TRAITS_TEST_NAME(TEST_CLASS, TEST_NAME)(); \
+	TEST(TEST_CLASS, TEST_NAME##_Delta) { TRAITS_TEST_NAME(TEST_CLASS, TEST_NAME)<DeltaTraits>(); } \
+	TEST(TEST_CLASS, TEST_NAME##_ReadOnly) { TRAITS_TEST_NAME(TEST_CLASS, TEST_NAME)<ReadOnlyTraits>(); } \
+	template<typename TTraits> void TRAITS_TEST_NAME(TEST_CLASS, TEST_NAME)()
+
+	// endregion
 
 	// region successful forward
 
-	TEST(TEST_CLASS, CanForwardUnlinkedAccount) {
+	CACHE_BASED_TEST(CanForwardUnlinkedAccount) {
 		// Arrange:
 		TestContext context;
-		auto publicKey = test::GenerateRandomByteArray<Key>();
-		context.addAccount(publicKey);
+		auto address = test::GenerateRandomByteArray<Address>();
+		context.addAccount(address);
 
 		// Act:
-		ProcessForwardedAccountState(context.cache(), publicKey, [&publicKey](const auto& accountState) {
+		ProcessForwardedAccountState(TTraits::GetCache(context), address, [&address](const auto& accountState) {
 			// Assert:
-			EXPECT_EQ(publicKey, accountState.PublicKey);
+			EXPECT_EQ(address, accountState.Address);
 		});
 	}
 
-	TEST(TEST_CLASS, CanForwardMainAccount) {
+	CACHE_BASED_TEST(CanForwardMainAccount) {
 		// Arrange:
 		TestContext context;
-		auto publicKey = test::GenerateRandomByteArray<Key>();
-		context.addAccount(publicKey, state::AccountType::Main, test::GenerateRandomByteArray<Key>());
+		auto mainPublicKey = test::GenerateRandomByteArray<Key>();
+		context.addAccount(mainPublicKey, state::AccountType::Main, test::GenerateRandomByteArray<Key>());
 
 		// Act:
-		ProcessForwardedAccountState(context.cache(), publicKey, [&publicKey](const auto& accountState) {
+		ProcessForwardedAccountState(TTraits::GetCache(context), ToAddress(mainPublicKey), [&mainPublicKey](const auto& accountState) {
 			// Assert:
-			EXPECT_EQ(publicKey, accountState.PublicKey);
+			EXPECT_EQ(mainPublicKey, accountState.PublicKey);
 		});
 	}
 
-	TEST(TEST_CLASS, CanForwardRemoteAccount) {
+	CACHE_BASED_TEST(CanForwardRemoteAccount) {
 		// Arrange:
 		TestContext context;
-		auto publicKey = test::GenerateRandomByteArray<Key>();
-		auto remoteKey = test::GenerateRandomByteArray<Key>();
-		context.addAccount(publicKey, state::AccountType::Main, remoteKey);
-		context.addAccount(remoteKey, state::AccountType::Remote, publicKey);
+		auto mainPublicKey = test::GenerateRandomByteArray<Key>();
+		auto remotePublicKey = test::GenerateRandomByteArray<Key>();
+		context.addAccount(mainPublicKey, state::AccountType::Main, remotePublicKey);
+		context.addAccount(remotePublicKey, state::AccountType::Remote, mainPublicKey);
 
 		// Act:
-		ProcessForwardedAccountState(context.cache(), remoteKey, [&publicKey](const auto& accountState) {
+		ProcessForwardedAccountState(TTraits::GetCache(context), ToAddress(remotePublicKey), [&mainPublicKey](const auto& accountState) {
 			// Assert: main account is returned
-			EXPECT_EQ(publicKey, accountState.PublicKey);
+			EXPECT_EQ(mainPublicKey, accountState.PublicKey);
 		});
 	}
 
@@ -105,42 +139,45 @@ namespace catapult { namespace cache {
 
 	// region forward failure
 
-	TEST(TEST_CLASS, CannotForwardWhenMainAccountIsNotPresent) {
+	CACHE_BASED_TEST(CannotForwardWhenMainAccountIsNotPresent) {
 		// Arrange:
 		TestContext context;
-		auto publicKey = test::GenerateRandomByteArray<Key>();
-		auto remoteKey = test::GenerateRandomByteArray<Key>();
-		context.addAccount(remoteKey, state::AccountType::Remote, publicKey);
+		auto mainPublicKey = test::GenerateRandomByteArray<Key>();
+		auto remotePublicKey = test::GenerateRandomByteArray<Key>();
+		context.addAccount(remotePublicKey, state::AccountType::Remote, mainPublicKey);
 
 		// Act + Assert:
-		auto& accountStateCache = context.cache();
-		EXPECT_THROW(ProcessForwardedAccountState(accountStateCache, remoteKey, [](const auto&) {}), catapult_invalid_argument);
+		EXPECT_THROW(
+				ProcessForwardedAccountState(TTraits::GetCache(context), ToAddress(remotePublicKey), [](const auto&) {}),
+				catapult_invalid_argument);
 	}
 
-	TEST(TEST_CLASS, CannotForwardWhenMainHasInvalidAccountType) {
+	CACHE_BASED_TEST(CannotForwardWhenMainHasInvalidAccountType) {
 		// Arrange:
 		TestContext context;
-		auto publicKey = test::GenerateRandomByteArray<Key>();
-		auto remoteKey = test::GenerateRandomByteArray<Key>();
-		context.addAccount(publicKey, state::AccountType::Remote, remoteKey);
-		context.addAccount(remoteKey, state::AccountType::Remote, publicKey);
+		auto mainPublicKey = test::GenerateRandomByteArray<Key>();
+		auto remotePublicKey = test::GenerateRandomByteArray<Key>();
+		context.addAccount(mainPublicKey, state::AccountType::Remote, remotePublicKey);
+		context.addAccount(remotePublicKey, state::AccountType::Remote, mainPublicKey);
 
 		// Act + Assert:
-		auto& accountStateCache = context.cache();
-		EXPECT_THROW(ProcessForwardedAccountState(accountStateCache, remoteKey, [](const auto&) {}), catapult_runtime_error);
+		EXPECT_THROW(
+				ProcessForwardedAccountState(TTraits::GetCache(context), ToAddress(remotePublicKey), [](const auto&) {}),
+				catapult_runtime_error);
 	}
 
-	TEST(TEST_CLASS, CannotForwardWhenMainHasInvalidKey) {
+	CACHE_BASED_TEST(CannotForwardWhenMainHasInvalidKey) {
 		// Arrange: main account does not link-back to remote key
 		TestContext context;
-		auto publicKey = test::GenerateRandomByteArray<Key>();
-		auto remoteKey = test::GenerateRandomByteArray<Key>();
-		context.addAccount(publicKey, state::AccountType::Main, test::GenerateRandomByteArray<Key>());
-		context.addAccount(remoteKey, state::AccountType::Remote, publicKey);
+		auto mainPublicKey = test::GenerateRandomByteArray<Key>();
+		auto remotePublicKey = test::GenerateRandomByteArray<Key>();
+		context.addAccount(mainPublicKey, state::AccountType::Main, test::GenerateRandomByteArray<Key>());
+		context.addAccount(remotePublicKey, state::AccountType::Remote, mainPublicKey);
 
 		// Act + Assert:
-		auto& accountStateCache = context.cache();
-		EXPECT_THROW(ProcessForwardedAccountState(accountStateCache, remoteKey, [](const auto&) {}), catapult_runtime_error);
+		EXPECT_THROW(
+				ProcessForwardedAccountState(TTraits::GetCache(context), ToAddress(remotePublicKey), [](const auto&) {}),
+				catapult_runtime_error);
 	}
 
 	// endregion

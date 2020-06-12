@@ -32,7 +32,6 @@
 #include "catapult/keylink/KeyLinkObserver.h"
 #include "catapult/keylink/KeyLinkValidator.h"
 #include "catapult/model/BlockChainConfiguration.h"
-#include "catapult/observers/ObserverUtils.h"
 #include "catapult/plugins/CacheHandlers.h"
 #include "catapult/plugins/PluginManager.h"
 
@@ -66,7 +65,7 @@ namespace catapult { namespace plugins {
 					return cache.sub<AccountStateCache>().createView()->size();
 				});
 				counters.emplace_back(utils::DiagnosticCounterId("ACNTST C HVA"), [&cache]() {
-					return cache.sub<AccountStateCache>().createView()->highValueAddresses().size();
+					return cache.sub<AccountStateCache>().createView()->highValueAccounts().addresses().size();
 				});
 			});
 		}
@@ -147,7 +146,8 @@ namespace catapult { namespace plugins {
 
 		manager.addStatefulValidatorHook([&config](auto& builder) {
 			builder
-				.add(validators::CreateAddressValidator(config.Network.Identifier))
+				.add(validators::CreateAddressValidator())
+				.add(validators::CreatePublicKeyValidator())
 				.add(validators::CreateDeadlineValidator(config.MaxTransactionLifetime))
 				.add(validators::CreateNemesisSinkValidator())
 				.add(validators::CreateEligibleHarvesterValidator())
@@ -159,7 +159,7 @@ namespace catapult { namespace plugins {
 			config.CurrencyMosaicId,
 			config.HarvestBeneficiaryPercentage,
 			config.HarvestNetworkPercentage,
-			config.HarvestNetworkFeeSinkPublicKey
+			config.HarvestNetworkFeeSinkAddress
 		};
 		const auto& calculator = manager.inflationConfig().InflationCalculator;
 		manager.addObserverHook([harvestFeeOptions, &calculator](auto& builder) {
@@ -172,7 +172,8 @@ namespace catapult { namespace plugins {
 				.add(observers::CreateBeneficiaryObserver())
 				.add(observers::CreateTransactionFeeActivityObserver())
 				.add(observers::CreateHarvestFeeObserver(harvestFeeOptions, calculator))
-				.add(observers::CreateTotalTransactionsObserver());
+				.add(observers::CreateTotalTransactionsObserver())
+				.add(observers::CreateHighValueAccountObserver(observers::NotifyMode::Commit));
 		});
 
 		manager.addTransientObserverHook([&config](auto& builder) {
@@ -181,11 +182,8 @@ namespace catapult { namespace plugins {
 					importance::CreateRestoreImportanceCalculator());
 			builder
 				.add(std::move(pRecalculateImportancesObserver))
-				.add(observers::CreateBlockStatisticObserver(config.MaxDifficultyBlocks, config.DefaultDynamicFeeMultiplier))
-				.add(observers::CreateCacheBlockPruningObserver<cache::BlockStatisticCache>(
-						"BlockStatistic",
-						config.BlockPruneInterval,
-						BlockDuration()));
+				.add(observers::CreateHighValueAccountObserver(observers::NotifyMode::Rollback))
+				.add(observers::CreateBlockStatisticObserver(config.MaxDifficultyBlocks, config.DefaultDynamicFeeMultiplier));
 		});
 
 		RegisterVotingKeyLinkTransaction(manager);

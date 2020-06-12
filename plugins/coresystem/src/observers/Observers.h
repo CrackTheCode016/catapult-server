@@ -52,8 +52,8 @@ namespace catapult { namespace observers {
 		/// Percentage of the harvested fee that is collected by the network.
 		uint8_t HarvestNetworkPercentage;
 
-		/// Public key of the harvest network fee sink account.
-		Key HarvestNetworkFeeSinkPublicKey;
+		/// Address of the harvest network fee sink account.
+		Address HarvestNetworkFeeSinkAddress;
 	};
 
 	/// Observes block notifications and triggers importance recalculations using either \a pCommitCalculator (for commits)
@@ -76,6 +76,9 @@ namespace catapult { namespace observers {
 
 	/// Observes block notifications and counts transactions.
 	DECLARE_OBSERVER(TotalTransactions, model::BlockNotification)();
+
+	/// Observes block notifications and recalculates high value account information when \a mode matches.
+	DECLARE_OBSERVER(HighValueAccount, model::BlockNotification)(NotifyMode mode);
 
 	// endregion
 

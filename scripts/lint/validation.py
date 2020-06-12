@@ -398,7 +398,11 @@ class TypoChecker(SimpleValidator):
             re.compile(r'\d+u( [^:] \d+)*u'): 'only first `u` is needed',
             re.compile(r' \.([^\.]|$)'): 'check spacing around \'.\'',
             re.compile(r'Header::(Footer|Header)'): 'drop Header',
-            re.compile(r'\S \(\)[^>]'): 'remove space before ()'
+            re.compile(r'\S \(\)[^>]'): 'remove space before ()',
+            re.compile(r'(etwork|ccount)Ids?\d*\b'): 'use Identifier instead of Id',
+            re.compile(r'typename T?AccountKey'): 'use TAccountIdentifier',
+            re.compile(r'ccountKey\b'): 'qualify with public or private',
+            re.compile(r'shared_ptr<(thread::)?IoThreadPool'): 'use unique_ptr instead'
         }
 
     def check(self, lineNumber, line):
@@ -666,7 +670,7 @@ class MultiConditionChecker(SimpleValidator):
             return False
 
         # allow implicit constructors for some types
-        if 'TestBlockTransactions' == match.group(1):
+        if match.group(1) in ['Resolvable', 'TestBlockTransactions']:
             return False
 
         return True
