@@ -6,8 +6,8 @@ message("--- locating mongo dependencies ---")
 find_package(mongo-cxx-driver REQUIRED)
 
 message("mongocxx  ver: ${LIBMONGOCXX_PACKAGE_VERSION}")
-find_library(MONGOC_LIB mongoc-1.0 ${mongo-cxx-driver_LIBS})
-find_library(BSONC_LIB bson-1.0 ${mongo-cxx-driver_LIBS})
+find_library(MONGOC_LIB mongoc-1.0 ${mongo-cxx-driver_LIBRARIES})
+find_library(BSONC_LIB bson-1.0 ${mongo-cxx-driver_LIBRARIES})
 
 if(MSVC)
 	set(MONGO_ADDITIONAL_LIBS bcrypt crypt32 secur32 ws2_32)
@@ -15,14 +15,14 @@ else()
 	set(MONGO_ADDITIONAL_LIBS)
 endif()
 
-message("mongocxx libs: ${mongo-cxx-driver_LIBS}")
+message("mongocxx libs: ${mongo-cxx-driver_LIBRARIES_TARGETS}")
 message("mongocxx  inc: ${mongo-cxx-driver_INCLUDE_DIRS}")
 message("mongoc    lib: ${MONGOC_LIB}")
 message("bsonc     lib: ${BSONC_LIB}")
 
 ### find and set mongo includes and libraries
 function(catapult_add_mongo_dependencies TARGET_NAME)
-	include_directories(SYSTEM ${mongo-cxx-driver_INCLUDE_DIRS} ${mongo-cxx-driver_INCLUDE_DIRS})
+	include_directories(SYSTEM ${mongo-cxx-driver_INCLUDE_DIR})
 	target_link_libraries(${TARGET_NAME} ${mongo-cxx-driver_LIBS} ${MONGO_ADDITIONAL_LIBS})
 endfunction()
 

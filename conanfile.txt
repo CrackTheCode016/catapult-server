@@ -6,7 +6,8 @@
  zmq/4.3.2@bincrafters/stable
  cppzmq/4.4.1@bincrafters/stable
  mongo-c-driver/1.16.1@bincrafters/stable
- mongo-cxx-driver/3.3.0@bincrafters/stable
+ mongo-cxx-driver/3.4.0@_/_
+ RocksDB/6.6.4-nem@_/_
  zlib/1.2.11@conan/stable
  openssl/1.1.1f
 
