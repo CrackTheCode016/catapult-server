@@ -191,7 +191,6 @@ namespace catapult { namespace mongo {
 				auto dbHeight = chainHeight();
 				// instead of stopping if the db is already full, dont add to it
 				// until the height is the dbHeight + 1
-				CATAPULT_LOG(info) << "BAZINGA BAZINGA BAZINGA A AAA AA A A A A A A ";
 				if (height == dbHeight + Height(1)) {
 					CATAPULT_LOG(important) << "saving block " << height << " when storage height is " << dbHeight;
 					SaveBlockHeader(m_database, blockElement);
