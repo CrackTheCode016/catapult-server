@@ -189,18 +189,19 @@ namespace catapult { namespace mongo {
 					dropBlocksAfter(height - Height(1));
 
 				auto dbHeight = chainHeight();
-				if (height != dbHeight + Height(1)) {
-					std::ostringstream out;
-					out << "cannot save block with height " << height << " when storage height is " << dbHeight;
-					CATAPULT_THROW_INVALID_ARGUMENT(out.str().c_str());
+				// instead of stopping if the db is already full, dont add to it
+				// until the height is the dbHeight + 1
+				CATAPULT_LOG(info) << "BAZINGA BAZINGA BAZINGA A AAA AA A A A A A A ";
+				if (height == dbHeight + Height(1)) {
+					CATAPULT_LOG(important) << "saving block " << height << " when storage height is " << dbHeight;
+					SaveBlockHeader(m_database, blockElement);
+					SaveTransactions(m_context.bulkWriter(), height, blockElement.Transactions, m_transactionRegistry, m_errorPolicy);
+					if (blockElement.OptionalStatement)
+						SaveBlockStatement(m_context.bulkWriter(), height, *blockElement.OptionalStatement, m_receiptRegistry, m_errorPolicy);
+					setHeight(blockElement.Block.Height);
+				} else {
+					CATAPULT_LOG(important) << "no block to save at height " << height << " while db is at height " << dbHeight;
 				}
-
-				SaveBlockHeader(m_database, blockElement);
-				SaveTransactions(m_context.bulkWriter(), height, blockElement.Transactions, m_transactionRegistry, m_errorPolicy);
-				if (blockElement.OptionalStatement)
-					SaveBlockStatement(m_context.bulkWriter(), height, *blockElement.OptionalStatement, m_receiptRegistry, m_errorPolicy);
-
-				setHeight(blockElement.Block.Height);
 			}
 
 			void dropBlocksAfter(Height height) override {
