@@ -198,7 +198,16 @@ namespace catapult { namespace mongo {
 					if (blockElement.OptionalStatement)
 						SaveBlockStatement(m_context.bulkWriter(), height, *blockElement.OptionalStatement, m_receiptRegistry, m_errorPolicy);
 					setHeight(blockElement.Block.Height);
-				} else {
+				}
+				// to prevent broker from adding blocks that are after the dbHeight if it's zero,
+				// we throw an error to indicate that the node should be re-synced
+				else if (dbHeight == Height(0) && height > Height(2)) {
+					std::ostringstream out;
+					out << "cannot save block, please reset node to properly sync with broker";
+					CATAPULT_THROW_INVALID_ARGUMENT(out.str().c_str());
+				}
+				// otherwise just pink log
+				 else {
 					CATAPULT_LOG(important) << "no block to save at height " << height << " while db is at height " << dbHeight;
 				}
 			}
