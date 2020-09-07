@@ -69,8 +69,7 @@ namespace catapult { namespace test {
 			EXPECT_EQ(Importance(0), accountState.ImportanceSnapshots.current());
 		}
 
-		void AssertRentalFeeAccount(const cache::AccountStateCacheView& view, const Key& publicKey) {
-			auto address = model::PublicKeyToAddress(publicKey, Network_Identifier);
+		void AssertRentalFeeAccount(const cache::AccountStateCacheView& view, const Address& address) {
 			auto message = model::AddressToString(address);
 			auto accountStateIter = view.find(address);
 			const auto& accountState = accountStateIter.get();
@@ -78,8 +77,8 @@ namespace catapult { namespace test {
 			// Assert:
 			EXPECT_EQ(Height(1), accountState.AddressHeight) << message;
 			EXPECT_EQ(address, accountState.Address) << message;
-			EXPECT_EQ(Height(1), accountState.PublicKeyHeight) << message;
-			EXPECT_EQ(publicKey, accountState.PublicKey) << message;
+			EXPECT_EQ(Height(0), accountState.PublicKeyHeight) << message;
+			EXPECT_EQ(Key(), accountState.PublicKey) << message;
 
 			EXPECT_EQ(Amount(0), accountState.Balances.get(Default_Currency_Mosaic_Id)) << message;
 			EXPECT_EQ(Amount(0), accountState.Balances.get(Default_Harvesting_Mosaic_Id)) << message;
@@ -103,14 +102,14 @@ namespace catapult { namespace test {
 				EXPECT_EQ(publicKey, accountState.PublicKey) << message;
 
 				auto expectedVrfPublicKey = crypto::KeyPair::FromString(Mijin_Test_Vrf_Private_Keys[index]).publicKey();
-				EXPECT_EQ(state::AccountKeys::KeyType::VRF, accountState.SupplementalAccountKeys.mask());
+				EXPECT_EQ(state::AccountPublicKeys::KeyType::VRF, accountState.SupplementalPublicKeys.mask());
 				EXPECT_EQ(expectedVrfPublicKey, GetVrfPublicKey(accountState));
 			} else {
 				// recipient public key is unknown (public key height is zero)
 				EXPECT_EQ(Height(0), accountState.PublicKeyHeight) << message;
 				EXPECT_EQ(Key(), accountState.PublicKey) << message;
 
-				EXPECT_EQ(state::AccountKeys::KeyType::Unset, accountState.SupplementalAccountKeys.mask());
+				EXPECT_EQ(state::AccountPublicKeys::KeyType::Unset, accountState.SupplementalPublicKeys.mask());
 			}
 
 			auto expectedImportance = GetNemesisImportance(publicKey);
@@ -133,8 +132,8 @@ namespace catapult { namespace test {
 			AssertNemesisAccount(view);
 
 			// - check rental fee accounts
-			AssertRentalFeeAccount(view, utils::ParseByteArray<Key>(Namespace_Rental_Fee_Sink_Public_Key));
-			AssertRentalFeeAccount(view, utils::ParseByteArray<Key>(Mosaic_Rental_Fee_Sink_Public_Key));
+			AssertRentalFeeAccount(view, model::StringToAddress(Namespace_Rental_Fee_Sink_Address));
+			AssertRentalFeeAccount(view, model::StringToAddress(Mosaic_Rental_Fee_Sink_Address));
 
 			// - check recipient accounts
 			auto index = 0u;

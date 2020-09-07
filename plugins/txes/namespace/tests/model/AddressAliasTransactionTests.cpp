@@ -39,13 +39,13 @@ namespace catapult { namespace model {
 			// Arrange:
 			auto expectedSize = baseSize;
 
-#define FIELD(X) expectedSize += sizeof(T::X);
+#define FIELD(X) expectedSize += SizeOf32<decltype(T::X)>();
 			TRANSACTION_FIELDS
 #undef FIELD
 
 			// Assert:
 			EXPECT_EQ(expectedSize, sizeof(T));
-			EXPECT_EQ(baseSize + 34u, sizeof(T));
+			EXPECT_EQ(baseSize + 33u, sizeof(T));
 		}
 
 		template<typename T>

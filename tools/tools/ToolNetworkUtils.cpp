@@ -28,22 +28,6 @@
 
 namespace catapult { namespace tools {
 
-	namespace {
-		ionet::Node CreateLocalNode(const Key& serverPublicKey) {
-			return ionet::Node(
-					{ serverPublicKey, "127.0.0.1" },
-					{ "127.0.0.1", 7900 },
-					{ model::UniqueNetworkFingerprint(), "tool endpoint" });
-		}
-	}
-
-	PacketIoFuture ConnectToLocalNode(
-			const std::string& certificateDirectory,
-			const Key& serverPublicKey,
-			const std::shared_ptr<thread::IoThreadPool>& pPool) {
-		return ConnectToNode(certificateDirectory, CreateLocalNode(serverPublicKey), pPool);
-	}
-
 	net::ConnectionSettings CreateToolConnectionSettings(const std::string& certificateDirectory) {
 		auto settings = net::ConnectionSettings();
 		settings.NetworkIdentifier = model::NetworkIdentifier::Mijin_Test;
@@ -55,14 +39,6 @@ namespace catapult { namespace tools {
 	}
 
 	namespace {
-		std::shared_ptr<ionet::PacketIo> CreateBufferedPacketIo(
-				const std::shared_ptr<ionet::PacketSocket>& pSocket,
-				const std::shared_ptr<thread::IoThreadPool>& pPool) {
-			// attach the lifetime of the pool to the returned io in order to prevent it from being destroyed before the io
-			auto pBufferedIo = pSocket->buffered();
-			return std::shared_ptr<ionet::PacketIo>(pBufferedIo.get(), [pBufferedIo, pPool](const auto*) {});
-		}
-
 		auto MakePeerConnectException(const ionet::Node& node, net::PeerConnectCode connectCode) {
 			std::ostringstream out;
 			out << "connecting to " << node << " failed with " << connectCode;
@@ -70,25 +46,19 @@ namespace catapult { namespace tools {
 		}
 	}
 
-	PacketIoFuture ConnectToNode(
-			const std::string& certificateDirectory,
-			const ionet::Node& node,
-			const std::shared_ptr<thread::IoThreadPool>& pPool) {
-		return ConnectToNode(CreateToolConnectionSettings(certificateDirectory), node, pPool);
+	PacketIoFuture ConnectToNode(const std::string& certificateDirectory, const ionet::Node& node, thread::IoThreadPool& pool) {
+		return ConnectToNode(CreateToolConnectionSettings(certificateDirectory), node, pool);
 	}
 
-	PacketIoFuture ConnectToNode(
-			const net::ConnectionSettings& connectionSettings,
-			const ionet::Node& node,
-			const std::shared_ptr<thread::IoThreadPool>& pPool) {
+	PacketIoFuture ConnectToNode(const net::ConnectionSettings& connectionSettings, const ionet::Node& node, thread::IoThreadPool& pool) {
 		auto pPromise = std::make_shared<thread::promise<std::shared_ptr<ionet::PacketIo>>>();
 
 		// it is ok to pass empty Key() because key is used only to disallow connections to self and AllowOutgoingSelfConnections is set
-		auto pConnector = net::CreateServerConnector(pPool, Key(), connectionSettings, "tool");
-		pConnector->connect(node, [node, pPool, pPromise](auto connectResult, const auto& socketInfo) {
+		auto pConnector = net::CreateServerConnector(pool, Key(), connectionSettings, "tool");
+		pConnector->connect(node, [node, pPromise](auto connectResult, const auto& socketInfo) {
 			switch (connectResult) {
 			case net::PeerConnectCode::Accepted:
-				return pPromise->set_value(CreateBufferedPacketIo(socketInfo.socket(), pPool));
+				return pPromise->set_value(socketInfo.socket()->buffered());
 
 			default:
 				CATAPULT_LOG(fatal) << "error occurred when trying to connect to node: " << connectResult;
@@ -116,7 +86,7 @@ namespace catapult { namespace tools {
 	}
 
 	PacketIoFuture MultiNodeConnector::connect(const ionet::Node& node) {
-		return ConnectToNode(m_certificateDirectory, node, m_pPool);
+		return ConnectToNode(m_certificateDirectory, node, *m_pPool);
 	}
 
 	// endregion

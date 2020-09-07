@@ -35,7 +35,7 @@ namespace catapult { namespace ionet {
 
 		auto hostSize = GetPackedSize(endpoint.Host);
 		auto friendlyNameSize = GetPackedSize(metadata.Name);
-		uint32_t packedNodeSize = sizeof(NetworkNode) + hostSize + friendlyNameSize;
+		uint32_t packedNodeSize = SizeOf32<NetworkNode>() + hostSize + friendlyNameSize;
 		auto pNetworkNode = utils::MakeUniqueWithSize<NetworkNode>(packedNodeSize);
 
 		pNetworkNode->Size = packedNodeSize;
@@ -50,10 +50,10 @@ namespace catapult { namespace ionet {
 		pNetworkNode->FriendlyNameSize = friendlyNameSize;
 
 		auto* pNetworkNodeData = reinterpret_cast<uint8_t*>(pNetworkNode.get() + 1);
-		memcpy(pNetworkNodeData, endpoint.Host.c_str(), hostSize);
+		std::memcpy(pNetworkNodeData, endpoint.Host.c_str(), hostSize);
 		pNetworkNodeData += hostSize;
 
-		memcpy(pNetworkNodeData, metadata.Name.c_str(), friendlyNameSize);
+		std::memcpy(pNetworkNodeData, metadata.Name.c_str(), friendlyNameSize);
 		return pNetworkNode;
 	}
 

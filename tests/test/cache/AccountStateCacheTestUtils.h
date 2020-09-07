@@ -20,6 +20,7 @@
 
 #pragma once
 #include "catapult/cache_core/AccountStateCacheTypes.h"
+#include "catapult/cache_core/HighValueAccounts.h"
 
 namespace catapult { namespace test {
 
@@ -29,7 +30,8 @@ namespace catapult { namespace test {
 			MosaicId harvestingMosaicId) {
 		return {
 			model::NetworkIdentifier::Mijin_Test,
-			543,
+			333,
+			222,
 			Amount(),
 			Amount(std::numeric_limits<Amount::ValueType>::max()),
 			Amount(),
@@ -42,4 +44,19 @@ namespace catapult { namespace test {
 	constexpr cache::AccountStateCacheTypes::Options CreateDefaultAccountStateCacheOptions() {
 		return CreateDefaultAccountStateCacheOptions(MosaicId(1111), MosaicId(2222));
 	}
+
+	/// Creates an account history given the specified height and balance pairs (\a balancePairs).
+	state::AccountHistory CreateAccountHistory(const std::vector<std::pair<Height, Amount>>& balancePairs);
+
+	/// Balance seed data for generating an address account history map.
+	using AddressBalanceHistorySeeds = std::vector<std::pair<Address, std::vector<std::pair<Height, Amount>>>>;
+
+	/// Generates an address account history map from balance \a seeds.
+	cache::AddressAccountHistoryMap GenerateAccountHistories(const AddressBalanceHistorySeeds& seeds);
+
+	/// Asserts that \a expected and \a actual are equal.
+	void AssertEqual(const cache::AddressAccountHistoryMap& expected, const cache::AddressAccountHistoryMap& actual);
+
+	/// Asserts that \a expected and \a actual have equal balance histories only.
+	void AssertEqualBalanceHistoryOnly(const cache::AddressAccountHistoryMap& expected, const cache::AddressAccountHistoryMap& actual);
 }}

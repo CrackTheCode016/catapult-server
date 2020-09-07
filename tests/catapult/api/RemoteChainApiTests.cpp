@@ -29,11 +29,11 @@ namespace catapult { namespace api {
 
 	namespace {
 		std::shared_ptr<ionet::Packet> CreatePacketWithBlocks(uint32_t numBlocks, Height startHeight) {
-			uint32_t payloadSize = numBlocks * sizeof(model::BlockHeader);
+			uint32_t payloadSize = numBlocks * SizeOf32<model::BlockHeader>();
 			auto pPacket = ionet::CreateSharedPacket<ionet::Packet>(payloadSize);
 			test::FillWithRandomData({ pPacket->Data(), payloadSize });
 
-			auto pData = pPacket->Data();
+			auto* pData = pPacket->Data();
 			for (auto i = 0u; i < numBlocks; ++i, pData += sizeof(model::BlockHeader)) {
 				auto& block = reinterpret_cast<model::Block&>(*pData);
 				block.Size = sizeof(model::BlockHeader);
@@ -44,13 +44,13 @@ namespace catapult { namespace api {
 			return pPacket;
 		}
 
-		struct ChainInfoTraits {
+		struct ChainStatisticsTraits {
 			static auto Invoke(const ChainApi& api) {
-				return api.chainInfo();
+				return api.chainStatistics();
 			}
 
 			static auto CreateValidResponsePacket() {
-				auto pResponsePacket = ionet::CreateSharedPacket<ChainInfoResponse>();
+				auto pResponsePacket = ionet::CreateSharedPacket<ChainStatisticsResponse>();
 				pResponsePacket->Height = Height(625);
 				pResponsePacket->FinalizedHeight = Height(256);
 				pResponsePacket->ScoreHigh = 0x1234567812345678;
@@ -66,14 +66,14 @@ namespace catapult { namespace api {
 			}
 
 			static void ValidateRequest(const ionet::Packet& packet) {
-				EXPECT_TRUE(ionet::IsPacketValid(packet, ChainInfoResponse::Packet_Type));
+				EXPECT_TRUE(ionet::IsPacketValid(packet, ChainStatisticsResponse::Packet_Type));
 			}
 
-			static void ValidateResponse(const ionet::Packet&, const ChainInfo& chainInfo) {
-				EXPECT_EQ(Height(625), chainInfo.Height);
-				EXPECT_EQ(Height(256), chainInfo.FinalizedHeight);
+			static void ValidateResponse(const ionet::Packet&, const ChainStatistics& chainStatistics) {
+				EXPECT_EQ(Height(625), chainStatistics.Height);
+				EXPECT_EQ(Height(256), chainStatistics.FinalizedHeight);
 
-				auto scoreArray = chainInfo.Score.toArray();
+				auto scoreArray = chainStatistics.Score.toArray();
 				EXPECT_EQ(0x1234567812345678u, scoreArray[0]);
 				EXPECT_EQ(0xABCDABCDABCDABCDu, scoreArray[1]);
 			}
@@ -195,7 +195,7 @@ namespace catapult { namespace api {
 			static void ValidateResponse(const ionet::Packet& response, const model::BlockRange& blocks) {
 				ASSERT_EQ(3u, blocks.size());
 
-				auto pData = response.Data();
+				const auto* pData = response.Data();
 				auto iter = blocks.cbegin();
 				for (auto i = 0u; i < blocks.size(); ++i) {
 					std::string message = "comparing blocks at " + std::to_string(i);
@@ -227,11 +227,11 @@ namespace catapult { namespace api {
 		};
 	}
 
-	DEFINE_REMOTE_API_TESTS_EMPTY_RESPONSE_INVALID(RemoteChainApiBlockless, ChainInfo)
+	DEFINE_REMOTE_API_TESTS_EMPTY_RESPONSE_INVALID(RemoteChainApiBlockless, ChainStatistics)
 	DEFINE_REMOTE_API_TESTS_EMPTY_RESPONSE_INVALID(RemoteChainApiBlockless, HashesFrom)
 
 	DEFINE_REMOTE_API_TESTS(RemoteChainApi)
-	DEFINE_REMOTE_API_TESTS_EMPTY_RESPONSE_INVALID(RemoteChainApi, ChainInfo)
+	DEFINE_REMOTE_API_TESTS_EMPTY_RESPONSE_INVALID(RemoteChainApi, ChainStatistics)
 	DEFINE_REMOTE_API_TESTS_EMPTY_RESPONSE_INVALID(RemoteChainApi, HashesFrom)
 	DEFINE_REMOTE_API_TESTS_EMPTY_RESPONSE_INVALID(RemoteChainApi, BlockLast)
 	DEFINE_REMOTE_API_TESTS_EMPTY_RESPONSE_INVALID(RemoteChainApi, BlockAt)

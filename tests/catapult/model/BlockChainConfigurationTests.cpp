@@ -19,6 +19,7 @@
 **/
 
 #include "catapult/model/BlockChainConfiguration.h"
+#include "catapult/model/Address.h"
 #include "catapult/utils/ConfigurationUtils.h"
 #include "catapult/utils/HexParser.h"
 #include "tests/test/nodeps/ConfigurationTestUtils.h"
@@ -31,9 +32,9 @@ namespace catapult { namespace model {
 	// region BlockChainConfiguration
 
 	namespace {
-		constexpr auto Nemesis_Public_Key = "C738E237C98760FA72726BA13DC2A1E3C13FA67DE26AF09742E972EE4EE45E1C";
+		constexpr auto Nemesis_Signer_Public_Key = "C738E237C98760FA72726BA13DC2A1E3C13FA67DE26AF09742E972EE4EE45E1C";
 		constexpr auto Nemesis_Generation_Hash_Seed = "CE076EF4ABFBC65B046987429E274EC31506D173E91BF102F16BEB7FB8176230";
-		constexpr auto Harvest_Network_Fee_Sink_Public_Key = "38662118395299246934A07CB42F6FD7D99B3416B93649AA6CEAEB77692AA060";
+		constexpr auto Harvest_Network_Fee_Sink_Address = "SBHI5UVMDQ36X3USYK6UQELCLZ7YL3T2WP5OCKY";
 
 		struct BlockChainConfigurationTraits {
 			using ConfigurationType = BlockChainConfiguration;
@@ -45,7 +46,7 @@ namespace catapult { namespace model {
 						{
 							{ "identifier", "public-test" },
 							{ "nodeEqualityStrategy", "host" },
-							{ "publicKey", Nemesis_Public_Key },
+							{ "nemesisSignerPublicKey", Nemesis_Signer_Public_Key },
 							{ "generationHashSeed", Nemesis_Generation_Hash_Seed },
 							{ "epochAdjustment", "1234567h" }
 						}
@@ -61,7 +62,6 @@ namespace catapult { namespace model {
 
 							{ "blockGenerationTargetTime", "10m" },
 							{ "blockTimeSmoothingFactor", "765" },
-							{ "blockFinalizationInterval", "512" },
 
 							{ "importanceGrouping", "444" },
 							{ "importanceActivityPercentage", "15" },
@@ -80,9 +80,14 @@ namespace catapult { namespace model {
 							{ "maxHarvesterBalance", "9'000'000'000" },
 							{ "minVoterBalance", "2'000'000'000" },
 
+							{ "votingSetGrouping", "234" },
+							{ "maxVotingKeysPerAccount", "36" },
+							{ "minVotingKeyLifetime", "21" },
+							{ "maxVotingKeyLifetime", "123" },
+
 							{ "harvestBeneficiaryPercentage", "56" },
 							{ "harvestNetworkPercentage", "21" },
-							{ "harvestNetworkFeeSinkPublicKey", Harvest_Network_Fee_Sink_Public_Key },
+							{ "harvestNetworkFeeSinkAddress", Harvest_Network_Fee_Sink_Address },
 
 							{ "blockPruneInterval", "432" },
 							{ "maxTransactionsPerBlock", "120" }
@@ -112,7 +117,7 @@ namespace catapult { namespace model {
 				// Assert:
 				EXPECT_EQ(NetworkIdentifier::Zero, config.Network.Identifier);
 				EXPECT_EQ(static_cast<NodeIdentityEqualityStrategy>(0), config.Network.NodeEqualityStrategy);
-				EXPECT_EQ(Key(), config.Network.PublicKey);
+				EXPECT_EQ(Key(), config.Network.NemesisSignerPublicKey);
 				EXPECT_EQ(GenerationHashSeed(), config.Network.GenerationHashSeed);
 				EXPECT_EQ(utils::TimeSpan(), config.Network.EpochAdjustment);
 
@@ -124,7 +129,6 @@ namespace catapult { namespace model {
 
 				EXPECT_EQ(utils::TimeSpan::FromMinutes(0), config.BlockGenerationTargetTime);
 				EXPECT_EQ(0u, config.BlockTimeSmoothingFactor);
-				EXPECT_EQ(0u, config.BlockFinalizationInterval);
 
 				EXPECT_EQ(0u, config.ImportanceGrouping);
 				EXPECT_EQ(0u, config.ImportanceActivityPercentage);
@@ -143,9 +147,14 @@ namespace catapult { namespace model {
 				EXPECT_EQ(Amount(0), config.MaxHarvesterBalance);
 				EXPECT_EQ(Amount(0), config.MinVoterBalance);
 
+				EXPECT_EQ(0u, config.VotingSetGrouping);
+				EXPECT_EQ(0u, config.MaxVotingKeysPerAccount);
+				EXPECT_EQ(0u, config.MinVotingKeyLifetime);
+				EXPECT_EQ(0u, config.MaxVotingKeyLifetime);
+
 				EXPECT_EQ(0u, config.HarvestBeneficiaryPercentage);
 				EXPECT_EQ(0u, config.HarvestNetworkPercentage);
-				EXPECT_EQ(Key(), config.HarvestNetworkFeeSinkPublicKey);
+				EXPECT_EQ(Address(), config.HarvestNetworkFeeSinkAddress);
 
 				EXPECT_EQ(0u, config.BlockPruneInterval);
 				EXPECT_EQ(0u, config.MaxTransactionsPerBlock);
@@ -157,7 +166,7 @@ namespace catapult { namespace model {
 				// Assert: notice that ParseKey also works for Hash256 because it is the same type as Key
 				EXPECT_EQ(NetworkIdentifier::Public_Test, config.Network.Identifier);
 				EXPECT_EQ(NodeIdentityEqualityStrategy::Host, config.Network.NodeEqualityStrategy);
-				EXPECT_EQ(utils::ParseByteArray<Key>(Nemesis_Public_Key), config.Network.PublicKey);
+				EXPECT_EQ(utils::ParseByteArray<Key>(Nemesis_Signer_Public_Key), config.Network.NemesisSignerPublicKey);
 				EXPECT_EQ(utils::ParseByteArray<GenerationHashSeed>(Nemesis_Generation_Hash_Seed), config.Network.GenerationHashSeed);
 				EXPECT_EQ(utils::TimeSpan::FromHours(1234567), config.Network.EpochAdjustment);
 
@@ -169,7 +178,6 @@ namespace catapult { namespace model {
 
 				EXPECT_EQ(utils::TimeSpan::FromMinutes(10), config.BlockGenerationTargetTime);
 				EXPECT_EQ(765u, config.BlockTimeSmoothingFactor);
-				EXPECT_EQ(512u, config.BlockFinalizationInterval);
 
 				EXPECT_EQ(444u, config.ImportanceGrouping);
 				EXPECT_EQ(15u, config.ImportanceActivityPercentage);
@@ -188,9 +196,14 @@ namespace catapult { namespace model {
 				EXPECT_EQ(Amount(9'000'000'000), config.MaxHarvesterBalance);
 				EXPECT_EQ(Amount(2'000'000'000), config.MinVoterBalance);
 
+				EXPECT_EQ(234u, config.VotingSetGrouping);
+				EXPECT_EQ(36u, config.MaxVotingKeysPerAccount);
+				EXPECT_EQ(21u, config.MinVotingKeyLifetime);
+				EXPECT_EQ(123u, config.MaxVotingKeyLifetime);
+
 				EXPECT_EQ(56u, config.HarvestBeneficiaryPercentage);
 				EXPECT_EQ(21, config.HarvestNetworkPercentage);
-				EXPECT_EQ(utils::ParseByteArray<Key>(Harvest_Network_Fee_Sink_Public_Key), config.HarvestNetworkFeeSinkPublicKey);
+				EXPECT_EQ(StringToAddress(Harvest_Network_Fee_Sink_Address), config.HarvestNetworkFeeSinkAddress);
 
 				EXPECT_EQ(432u, config.BlockPruneInterval);
 				EXPECT_EQ(120u, config.MaxTransactionsPerBlock);
@@ -338,7 +351,7 @@ namespace catapult { namespace model {
 				BetaConfiguration config;
 				utils::LoadIniProperty(bag, "", "Bar", config.Bar);
 				utils::LoadIniProperty(bag, "", "Baz", config.Baz);
-				utils::VerifyBagSizeLte(bag, 2);
+				utils::VerifyBagSizeExact(bag, 2);
 				return config;
 			}
 		};

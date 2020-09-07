@@ -19,6 +19,7 @@
 **/
 
 #include "catapult/model/EmbeddedTransaction.h"
+#include "catapult/model/Address.h"
 #include "catapult/preprocessor.h"
 #include "tests/test/core/mocks/MockNotificationSubscriber.h"
 #include "tests/test/core/mocks/MockTransaction.h"
@@ -37,7 +38,7 @@ namespace catapult { namespace model {
 		// Arrange:
 		auto expectedSize = sizeof(SizePrefixedEntity) + 2 * sizeof(uint32_t);
 
-#define FIELD(X) expectedSize += sizeof(EmbeddedTransaction::X);
+#define FIELD(X) expectedSize += SizeOf32<decltype(EmbeddedTransaction::X)>();
 		EMBEDDED_TRANSACTION_FIELDS
 #undef FIELD
 
@@ -76,6 +77,24 @@ namespace catapult { namespace model {
 
 	// endregion
 
+	// region GetSignerAddress
+
+	TEST(TEST_CLASS, GetSignerAddressCalculatesCorrectSignerAddress) {
+		// Arrange:
+		EmbeddedTransaction transaction;
+		test::FillWithRandomData(transaction.SignerPublicKey);
+		transaction.Network = static_cast<NetworkIdentifier>(test::RandomByte());
+
+		// Act:
+		auto signerAddress = GetSignerAddress(transaction);
+
+		// Assert:
+		auto expectedSignerAddress = PublicKeyToAddress(transaction.SignerPublicKey, transaction.Network);
+		EXPECT_EQ(expectedSignerAddress, signerAddress);
+	}
+
+	// endregion
+
 	// region IsSizeValid
 
 	namespace {
@@ -89,7 +108,7 @@ namespace catapult { namespace model {
 	TEST(TEST_CLASS, SizeIsInvalidForTransactionWithUnknownType) {
 		// Arrange:
 		EmbeddedTransaction transaction;
-		transaction.Type = static_cast<EntityType>(-1);
+		transaction.Type = static_cast<EntityType>(std::numeric_limits<uint16_t>::max());
 		transaction.Size = sizeof(EmbeddedTransaction);
 
 		// Act + Assert:

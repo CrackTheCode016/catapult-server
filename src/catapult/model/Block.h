@@ -19,8 +19,8 @@
 **/
 
 #pragma once
+#include "SizePrefixedEntityContainer.h"
 #include "Transaction.h"
-#include "TransactionContainer.h"
 #include "VerifiableEntity.h"
 #include "catapult/crypto/Vrf.h"
 #include "catapult/types.h"
@@ -31,23 +31,11 @@ namespace catapult { namespace model {
 
 #pragma pack(push, 1)
 
-	/// VRF proof for the verifiable random function.
-	struct PackedVrfProof {
-		/// Gamma.
-		crypto::ProofGamma Gamma;
-
-		/// Verification hash.
-		crypto::ProofVerificationHash VerificationHash;
-
-		/// Scalar.
-		crypto::ProofScalar Scalar;
-	};
-
 	/// Binary layout for a block header.
 	struct BlockHeader : public VerifiableEntity {
 	public:
 		/// Block format version.
-		static constexpr int Current_Version = 1;
+		static constexpr uint8_t Current_Version = 1;
 
 		/// Size of the footer that can be skipped when signing/verifying.
 		static constexpr size_t Footer_Size = sizeof(uint32_t);
@@ -63,7 +51,7 @@ namespace catapult { namespace model {
 		catapult::Difficulty Difficulty;
 
 		/// Generation hash proof.
-		PackedVrfProof GenerationHashProof;
+		crypto::VrfProof GenerationHashProof;
 
 		/// Previous block hash.
 		Hash256 PreviousBlockHash;
@@ -77,8 +65,8 @@ namespace catapult { namespace model {
 		/// Hash of the global chain state at this block.
 		Hash256 StateHash;
 
-		/// Beneficiary public key designated by harvester.
-		Key BeneficiaryPublicKey;
+		/// Beneficiary address designated by harvester.
+		Address BeneficiaryAddress;
 
 		/// Fee multiplier applied to block transactions.
 		BlockFeeMultiplier FeeMultiplier;

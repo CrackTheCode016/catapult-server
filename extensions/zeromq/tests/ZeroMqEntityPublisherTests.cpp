@@ -21,7 +21,6 @@
 #include "zeromq/src/ZeroMqEntityPublisher.h"
 #include "sdk/src/extensions/ConversionExtensions.h"
 #include "zeromq/src/PublisherUtils.h"
-#include "catapult/model/Address.h"
 #include "catapult/model/Cosignature.h"
 #include "catapult/model/Elements.h"
 #include "catapult/model/NotificationSubscriber.h"
@@ -61,6 +60,10 @@ namespace catapult { namespace zeromq {
 				publisher().publishDropBlocks(height);
 			}
 
+			void publishFinalizedBlock(Height height, const Hash256& hash, FinalizationPoint point) {
+				publisher().publishFinalizedBlock(height, hash, point);
+			}
+
 			void publishTransaction(TransactionMarker topicMarker, const model::TransactionInfo& transactionInfo, Height height) {
 				publisher().publishTransaction(topicMarker, transactionInfo, height);
 			}
@@ -77,13 +80,12 @@ namespace catapult { namespace zeromq {
 				publisher().publishTransactionStatus(transaction, hash, status);
 			}
 
-			void publishCosignature(const model::TransactionInfo& parentTransactionInfo, const Key& signer, const Signature& signature) {
-				publisher().publishCosignature(parentTransactionInfo, signer, signature);
+			void publishCosignature(const model::TransactionInfo& parentTransactionInfo, const model::Cosignature& cosignature) {
+				publisher().publishCosignature(parentTransactionInfo, cosignature);
 			}
 		};
 
 		std::shared_ptr<model::UnresolvedAddressSet> GenerateRandomExtractedAddresses() {
-			// Arrange: generate three random addresses
 			return test::GenerateRandomUnresolvedAddressSetPointer(3);
 		}
 	}
@@ -94,10 +96,9 @@ namespace catapult { namespace zeromq {
 		// Arrange:
 		EntityPublisherContext context;
 		context.subscribe(BlockMarker::Drop_Blocks_Marker);
-		Height height(123);
 
 		// Act + Assert:
-		context.publishDropBlocks(height);
+		context.publishDropBlocks(Height(123));
 		context.destroyPublisher();
 	}
 
@@ -109,6 +110,7 @@ namespace catapult { namespace zeromq {
 		// Arrange:
 		EntityPublisherContext context;
 		context.subscribe(BlockMarker::Block_Marker);
+
 		auto pBlock = test::GenerateEmptyRandomBlock();
 		auto blockElement = test::BlockToBlockElement(*pBlock);
 
@@ -130,16 +132,36 @@ namespace catapult { namespace zeromq {
 		// Arrange:
 		EntityPublisherContext context;
 		context.subscribe(BlockMarker::Drop_Blocks_Marker);
-		Height height(123);
 
 		// Act:
-		context.publishDropBlocks(height);
+		context.publishDropBlocks(Height(123));
 
 		// Assert:
 		zmq::multipart_t message;
 		test::ZmqReceive(message, context.zmqSocket());
 
-		test::AssertDropBlocksMessage(message, height);
+		test::AssertDropBlocksMessage(message, Height(123));
+	}
+
+	// endregion
+
+	// region publishFinalizedBlock
+
+	TEST(TEST_CLASS, CanPublishFinalizedBlock) {
+		// Arrange:
+		EntityPublisherContext context;
+		context.subscribe(BlockMarker::Finalized_Block_Marker);
+
+		auto hash = test::GenerateRandomByteArray<Hash256>();
+
+		// Act:
+		context.publishFinalizedBlock(Height(123), hash, FinalizationPoint(55));
+
+		// Assert:
+		zmq::multipart_t message;
+		test::ZmqReceive(message, context.zmqSocket());
+
+		test::AssertFinalizedBlockMessage(message, Height(123), hash, FinalizationPoint(55));
 	}
 
 	// endregion
@@ -219,7 +241,7 @@ namespace catapult { namespace zeromq {
 		// Arrange:
 		EntityPublisherContext context;
 		auto pTransaction = mocks::CreateMockTransaction(0);
-		auto recipientAddress = model::PublicKeyToAddress(pTransaction->RecipientPublicKey, pTransaction->Network);
+		auto recipientAddress = mocks::GetRecipientAddress(*pTransaction);
 		auto unresolvedRecipientAddress = extensions::CopyToUnresolvedAddress(recipientAddress);
 		auto transactionInfo = ToTransactionInfo(std::move(pTransaction));
 		Height height(123);
@@ -329,17 +351,16 @@ namespace catapult { namespace zeromq {
 		// Arrange:
 		EntityPublisherContext context;
 		auto transactionInfo = ToTransactionInfo(mocks::CreateMockTransaction(0));
-		auto signer = test::GenerateRandomByteArray<Key>();
-		auto signature = test::GenerateRandomByteArray<Signature>();
+		auto cosignature = test::CreateRandomDetachedCosignature();
 		auto addresses = test::ExtractAddresses(test::ToMockTransaction(*transactionInfo.pEntity));
 		TransactionMarker marker = TransactionMarker::Cosignature_Marker;
 		context.subscribeAll(marker, addresses);
 
 		// Act:
-		context.publishCosignature(transactionInfo, signer, signature);
+		context.publishCosignature(transactionInfo, cosignature);
 
 		// Assert:
-		model::DetachedCosignature expectedDetachedCosignature(signer, signature, transactionInfo.EntityHash);
+		model::DetachedCosignature expectedDetachedCosignature(cosignature, transactionInfo.EntityHash);
 		auto& zmqSocket = context.zmqSocket();
 		test::AssertMessages(zmqSocket, marker, addresses, [&expectedDetachedCosignature](const auto& message, const auto& topic) {
 			test::AssertDetachedCosignatureMessage(message, topic, expectedDetachedCosignature);

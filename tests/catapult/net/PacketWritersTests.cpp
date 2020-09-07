@@ -45,12 +45,6 @@ namespace catapult { namespace net {
 
 		const auto Default_Timeout = []() { return utils::TimeSpan::FromMinutes(1); }();
 
-		using CounterPointer = std::shared_ptr<std::atomic<size_t>>;
-
-		auto CreateCounterPointer() {
-			return std::make_shared<std::atomic<size_t>>(0);
-		}
-
 		void EmptyReadCallback(ionet::SocketOperationCode, const ionet::Packet*)
 		{}
 
@@ -75,7 +69,7 @@ namespace catapult { namespace net {
 					: ServerPublicKey(serverPublicKey)
 					, pPool(test::CreateStartedIoThreadPool())
 					, IoContext(pPool->ioContext())
-					, pWriters(CreatePacketWriters(pPool, ServerPublicKey, SetRealVerifyCallback(connectionSettings))) {
+					, pWriters(CreatePacketWriters(*pPool, ServerPublicKey, SetRealVerifyCallback(connectionSettings))) {
 				for (auto i = 0u; i < numClientPublicKeys; ++i) {
 					ClientKeyPairs.push_back(test::GenerateKeyPair());
 					ClientPublicKeys.push_back(ClientKeyPairs.back().publicKey());
@@ -105,7 +99,7 @@ namespace catapult { namespace net {
 			std::vector<Key> ClientPublicKeys; // accepted clients forwarded to the server AND/OR connections initiated by server
 			std::vector<crypto::KeyPair> ClientKeyPairs;
 			std::vector<std::string> Hosts;
-			std::shared_ptr<thread::IoThreadPool> pPool;
+			std::unique_ptr<thread::IoThreadPool> pPool;
 			boost::asio::io_context& IoContext;
 			std::shared_ptr<PacketWriters> pWriters;
 
@@ -197,25 +191,25 @@ namespace catapult { namespace net {
 				auto peerIdentity = model::NodeIdentity{ context.ClientPublicKeys[i], context.Hosts[i] };
 				ionet::Node node(peerIdentity, context.serverNode().endpoint(), ionet::NodeMetadata());
 
-				auto pNumCallbacks = CreateCounterPointer();
+				auto numCallbacks = std::atomic<size_t>(0);
 				test::RemoteAcceptServer server(context.ClientKeyPairs[i]);
-				server.start(acceptor, [pNumCallbacks, &state](const auto& pSocket) {
+				server.start(acceptor, [&numCallbacks, &state](const auto& pSocket) {
 					state.ServerSockets.push_back(pSocket);
-					++*pNumCallbacks;
+					++numCallbacks;
 				});
 
-				context.pWriters->connect(node, [pNumCallbacks, &state](const auto& connectResult) {
+				context.pWriters->connect(node, [&numCallbacks, &state](const auto& connectResult) {
 					state.Results.push_back({ connectResult.Code, connectResult.Identity });
 					state.ClientSockets.push_back(connectResult.pPeerSocket);
-					++*pNumCallbacks;
+					++numCallbacks;
 
 					// server callback will not be called when connect returns already connected
 					if (PeerConnectCode::Already_Connected == connectResult.Code)
-						++*pNumCallbacks;
+						++numCallbacks;
 				});
 
 				// - wait for both connections to complete
-				WAIT_FOR_VALUE(2u, *pNumCallbacks);
+				WAIT_FOR_VALUE(2u, numCallbacks);
 			}
 
 			context.waitForWriters(0 == numExpectedWriters ? numConnections : numExpectedWriters);
@@ -250,14 +244,15 @@ namespace catapult { namespace net {
 	// region connect failure
 
 	namespace {
-		auto CreateDefaultPacketWriters() {
-			return CreatePacketWriters(test::CreateStartedIoThreadPool(), Key(), ConnectionSettings());
+		auto CreateDefaultPacketWriters(thread::IoThreadPool& pool) {
+			return CreatePacketWriters(pool, Key(), ConnectionSettings());
 		}
 	}
 
 	TEST(TEST_CLASS, InitiallyNoConnectionsAreActive) {
 		// Act:
-		auto pWriters = CreateDefaultPacketWriters();
+		auto pPool = test::CreateStartedIoThreadPool();
+		auto pWriters = CreateDefaultPacketWriters(*pPool);
 
 		// Assert:
 		EXPECT_NUM_ACTIVE_WRITERS(0u, *pWriters);
@@ -266,15 +261,15 @@ namespace catapult { namespace net {
 	TEST(TEST_CLASS, ConnectFailsOnConnectError) {
 		// Arrange:
 		PacketWritersTestContext context;
-		auto pNumCallbacks = CreateCounterPointer();
+		auto numCallbacks = std::atomic<size_t>(0);
 
 		// Act: try to connect to a server that isn't running
 		PeerConnectResult result;
-		context.pWriters->connect(context.serverNode(), [pNumCallbacks, &result](const auto& connectResult) {
+		context.pWriters->connect(context.serverNode(), [&numCallbacks, &result](const auto& connectResult) {
 			result = connectResult;
-			++*pNumCallbacks;
+			++numCallbacks;
 		});
-		WAIT_FOR_ONE(*pNumCallbacks);
+		WAIT_FOR_ONE(numCallbacks);
 
 		// Assert:
 		EXPECT_EQ(PeerConnectCode::Socket_Error, result.Code);
@@ -284,23 +279,23 @@ namespace catapult { namespace net {
 	TEST(TEST_CLASS, ConnectFailsOnVerifyError) {
 		// Arrange:
 		PacketWritersTestContext context;
-		auto pNumCallbacks = CreateCounterPointer();
+		auto numCallbacks = std::atomic<size_t>(0);
 
 		// Act: start a server and client verify operation
 		PeerConnectResult result;
-		test::SpawnPacketServerWork(context.IoContext, [pNumCallbacks](const auto& pSocket) {
+		test::SpawnPacketServerWork(context.IoContext, [&numCallbacks](const auto& pSocket) {
 			// - trigger a verify error by closing the socket without responding
 			pSocket->close();
-			++*pNumCallbacks;
+			++numCallbacks;
 		});
 
-		context.pWriters->connect(context.serverNode(), [pNumCallbacks, &result](const auto& connectResult) {
+		context.pWriters->connect(context.serverNode(), [&numCallbacks, &result](const auto& connectResult) {
 			result = connectResult;
-			++*pNumCallbacks;
+			++numCallbacks;
 		});
 
 		// - wait for both callbacks to complete and the connection to close
-		WAIT_FOR_VALUE(2u, *pNumCallbacks);
+		WAIT_FOR_VALUE(2u, numCallbacks);
 		context.waitForConnections(0);
 
 		// Assert: the verification should have failed and all connections should have been destroyed
@@ -396,11 +391,11 @@ namespace catapult { namespace net {
 			EXPECT_TRUE(test::IsSocketOpen(*state.ClientSockets.back()));
 
 			// Act:
-			auto pNumCallbacks = CreateCounterPointer();
+			auto numCallbacks = std::atomic<size_t>(0);
 			auto buffer = test::GenerateRandomPacketBuffer(95);
-			state.ServerSockets.back()->write(test::BufferToPacketPayload(buffer), [pNumCallbacks](auto) { ++*pNumCallbacks; });
+			state.ServerSockets.back()->write(test::BufferToPacketPayload(buffer), [&numCallbacks](auto) { ++numCallbacks; });
 
-			WAIT_FOR_ONE(*pNumCallbacks);
+			WAIT_FOR_ONE(numCallbacks);
 			test::WaitForClosedSocket(*state.ClientSockets.back());
 
 			// Assert:
@@ -429,8 +424,8 @@ namespace catapult { namespace net {
 	namespace {
 		constexpr uint8_t Sentinel_Index = 50;
 
-		auto HandleSocketReadInSendTests(const CounterPointer& pCounter, const ionet::ByteBuffer& buffer, bool expectSuccess = true) {
-			return [pCounter, buffer, expectSuccess](auto code, const auto* pPacket) {
+		auto HandleSocketReadInSendTests(std::atomic<size_t>& counter, const ionet::ByteBuffer& buffer, bool expectSuccess = true) {
+			return [&counter, buffer, expectSuccess](auto code, const auto* pPacket) {
 				CATAPULT_LOG(debug) << "read from socket returned " << code;
 
 				if (expectSuccess) {
@@ -449,7 +444,7 @@ namespace catapult { namespace net {
 					EXPECT_FALSE(!!pPacket);
 				}
 
-				++*pCounter;
+				++counter;
 			};
 		}
 	}
@@ -466,11 +461,11 @@ namespace catapult { namespace net {
 		context.pWriters->broadcast(test::BufferToPacketPayload(buffer));
 
 		// Assert: the packet was sent to all connected sockets
-		auto pNumReads = CreateCounterPointer();
+		auto numReads = std::atomic<size_t>(0);
 		for (const auto& pSocket : state.ServerSockets)
-			pSocket->read(HandleSocketReadInSendTests(pNumReads, buffer));
+			pSocket->read(HandleSocketReadInSendTests(numReads, buffer));
 
-		WAIT_FOR_VALUE(Num_Connections, *pNumReads);
+		WAIT_FOR_VALUE(Num_Connections, numReads);
 
 		// - all connections are still open
 		EXPECT_NUM_ACTIVE_WRITERS(Num_Connections, *context.pWriters);
@@ -493,13 +488,13 @@ namespace catapult { namespace net {
 
 		// Assert: the packet was sent to all connected server sockets
 		size_t i = 0;
-		auto pNumReads = CreateCounterPointer();
+		auto numReads = std::atomic<size_t>(0);
 		for (const auto& pSocket : state.ServerSockets) {
-			pSocket->read(HandleSocketReadInSendTests(pNumReads, buffer, 2 != i && 3 != i));
+			pSocket->read(HandleSocketReadInSendTests(numReads, buffer, 2 != i && 3 != i));
 			++i;
 		}
 
-		WAIT_FOR_VALUE(Num_Connections, *pNumReads);
+		WAIT_FOR_VALUE(Num_Connections, numReads);
 
 		// - release the shared pointers in state to the closed client sockets (so that the weak pointer cannot be locked)
 		stateGuard.destroyClientSocketAt(2);
@@ -534,16 +529,16 @@ namespace catapult { namespace net {
 
 			// Assert: the packets were sent to all connected sockets
 			size_t socketId = 0u;
-			auto pNumReads = CreateCounterPointer();
+			auto numReads = std::atomic<size_t>(0);
 			for (const auto& pSocket : state.ServerSockets) {
 				auto expectedBuffer = buffer;
 				expectedBuffer[Sentinel_Index] = static_cast<uint8_t>(0x80 | (socketId + i * Num_Connections));
-				pSocket->read(HandleSocketReadInSendTests(pNumReads, expectedBuffer));
+				pSocket->read(HandleSocketReadInSendTests(numReads, expectedBuffer));
 				++socketId;
 			}
 
 			// - wait for all reads and for all connections to be returned
-			WAIT_FOR_VALUE(Num_Connections, *pNumReads);
+			WAIT_FOR_VALUE(Num_Connections, numReads);
 			context.waitForAvailableWriters(Num_Connections);
 		}
 
@@ -611,16 +606,16 @@ namespace catapult { namespace net {
 	TEST(TEST_CLASS, PickOneReadErrorClosesPeer) {
 		AssertOperationClosesConnectedSocket([](auto& socket, auto& writers) {
 			// Arrange:
-			auto pNumCallbacks = CreateCounterPointer();
+			auto numCallbacks = std::atomic<size_t>(0);
 			auto readCode = ionet::SocketOperationCode::Success;
 
 			// Act: close the socket and attempt to read from it (the read should fail)
 			socket.close();
-			writers.pickOne(Default_Timeout).io()->read([pNumCallbacks, &readCode](auto code, const auto*) {
+			writers.pickOne(Default_Timeout).io()->read([&numCallbacks, &readCode](auto code, const auto*) {
 				readCode = code;
-				++*pNumCallbacks;
+				++numCallbacks;
 			});
-			WAIT_FOR_ONE(*pNumCallbacks);
+			WAIT_FOR_ONE(numCallbacks);
 
 			// Assert: the connection is closed
 			test::AssertSocketClosedDuringRead(readCode);
@@ -631,7 +626,7 @@ namespace catapult { namespace net {
 		// Assert: non-deterministic due to timeouts
 		AssertNonDeterministicOperationClosesConnectedSocket([](auto& socket, auto& writers, size_t i) {
 			// Arrange:
-			auto pNumCallbacks = CreateCounterPointer();
+			auto numCallbacks = std::atomic<size_t>(0);
 			auto readCode = ionet::SocketOperationCode::Success;
 
 			// - write some dummy data to the socket
@@ -640,11 +635,11 @@ namespace catapult { namespace net {
 			// Act: get an io wrapper, wait for it to timeout, then attempt to read from the io wrapper
 			auto pIo = writers.pickOne(utils::TimeSpan::FromMilliseconds(1)).io();
 			test::Sleep(static_cast<long>(5 * i));
-			pIo->read([pNumCallbacks, &readCode](auto code, const auto*) {
+			pIo->read([&numCallbacks, &readCode](auto code, const auto*) {
 				readCode = code;
-				++*pNumCallbacks;
+				++numCallbacks;
 			});
-			WAIT_FOR_ONE(*pNumCallbacks);
+			WAIT_FOR_ONE(numCallbacks);
 
 			if (ionet::SocketOperationCode::Success == readCode)
 				return false;
@@ -658,18 +653,18 @@ namespace catapult { namespace net {
 	TEST(TEST_CLASS, PickOneWriteErrorClosesPeer) {
 		AssertOperationClosesConnectedSocket([](const auto&, auto& writers) {
 			// Arrange:
-			auto pNumCallbacks = CreateCounterPointer();
+			auto numCallbacks = std::atomic<size_t>(0);
 			auto writeCode = ionet::SocketOperationCode::Success;
 			auto pPacket = test::BufferToPacketPayload(test::GenerateRandomPacketBuffer(95));
 
 			// Act: get an io wrapper, shutdown the writers, then attempt to write to the io wrapper
 			auto pIo = writers.pickOne(Default_Timeout).io();
 			writers.shutdown();
-			pIo->write(std::move(pPacket), [pNumCallbacks, &writeCode](auto code) {
+			pIo->write(std::move(pPacket), [&numCallbacks, &writeCode](auto code) {
 				writeCode = code;
-				++*pNumCallbacks;
+				++numCallbacks;
 			});
-			WAIT_FOR_ONE(*pNumCallbacks);
+			WAIT_FOR_ONE(numCallbacks);
 
 			// Assert: the connection is closed
 			EXPECT_EQ(ionet::SocketOperationCode::Write_Error, writeCode);
@@ -680,18 +675,18 @@ namespace catapult { namespace net {
 		// Assert: non-deterministic due to timeouts
 		AssertNonDeterministicOperationClosesConnectedSocket([](const auto&, auto& writers, auto i) {
 			// Arrange:
-			auto pNumCallbacks = CreateCounterPointer();
+			auto numCallbacks = std::atomic<size_t>(0);
 			auto writeCode = ionet::SocketOperationCode::Success;
 			auto pPacket = test::BufferToPacketPayload(test::GenerateRandomPacketBuffer(95));
 
 			// Act: get an io wrapper, wait for it to timeout, then attempt to write to the io wrapper
 			auto pIo = writers.pickOne(utils::TimeSpan::FromMilliseconds(1)).io();
 			test::Sleep(static_cast<long>(5 * i));
-			pIo->write(std::move(pPacket), [pNumCallbacks, &writeCode](auto code) {
+			pIo->write(std::move(pPacket), [&numCallbacks, &writeCode](auto code) {
 				writeCode = code;
-				++*pNumCallbacks;
+				++numCallbacks;
 			});
-			WAIT_FOR_ONE(*pNumCallbacks);
+			WAIT_FOR_ONE(numCallbacks);
 
 			if (ionet::SocketOperationCode::Success == writeCode)
 				return false;
@@ -723,15 +718,15 @@ namespace catapult { namespace net {
 	TEST(TEST_CLASS, PickOneReadAfterCloseTriggersError) {
 		RunTestWithClosedPacketIo([](auto& io) {
 			// Arrange:
-			auto pNumCallbacks = CreateCounterPointer();
+			auto numCallbacks = std::atomic<size_t>(0);
 			auto readCode = ionet::SocketOperationCode::Success;
 
 			// Act:
-			io.read([pNumCallbacks, &readCode](auto code, const auto*) {
+			io.read([&numCallbacks, &readCode](auto code, const auto*) {
 				readCode = code;
-				++*pNumCallbacks;
+				++numCallbacks;
 			});
-			WAIT_FOR_ONE(*pNumCallbacks);
+			WAIT_FOR_ONE(numCallbacks);
 
 			// Assert: the connection is closed
 			EXPECT_EQ(ionet::SocketOperationCode::Closed, readCode);
@@ -741,16 +736,16 @@ namespace catapult { namespace net {
 	TEST(TEST_CLASS, PickOneWriteAfterCloseTriggersError) {
 		RunTestWithClosedPacketIo([](auto& io) {
 			// Arrange:
-			auto pNumCallbacks = CreateCounterPointer();
+			auto numCallbacks = std::atomic<size_t>(0);
 			auto pPacket = test::BufferToPacketPayload(test::GenerateRandomPacketBuffer(95));
 			auto writeCode = ionet::SocketOperationCode::Success;
 
 			// Act:
-			io.write(std::move(pPacket), [pNumCallbacks, &writeCode](auto code) {
+			io.write(std::move(pPacket), [&numCallbacks, &writeCode](auto code) {
 				writeCode = code;
-				++*pNumCallbacks;
+				++numCallbacks;
 			});
-			WAIT_FOR_ONE(*pNumCallbacks);
+			WAIT_FOR_ONE(numCallbacks);
 
 			// Assert: the connection is closed
 			EXPECT_EQ(ionet::SocketOperationCode::Write_Error, writeCode);
@@ -769,22 +764,22 @@ namespace catapult { namespace net {
 				EXPECT_NUM_ACTIVE_WRITERS(1u, *context.pWriters);
 
 				// Arrange:
-				auto pNumCallbacks = CreateCounterPointer();
+				auto numCallbacks = std::atomic<size_t>(0);
 				auto callbackCode = ionet::SocketOperationCode::Success;
 
 				// - start an operation and immediately destroy the io and shutdown and destroy the writers
 				CATAPULT_LOG(debug) << "starting operation";
 				auto pIo = context.pWriters->pickOne(Default_Timeout).io();
-				operation(*pIo, [pNumCallbacks, &callbackCode](auto code) {
+				operation(*pIo, [&numCallbacks, &callbackCode](auto code) {
 					CATAPULT_LOG(debug) << "operation completed";
 					callbackCode = code;
-					++*pNumCallbacks;
+					++numCallbacks;
 				});
 				pIo.reset();
 				context.pWriters->shutdown();
 				context.pWriters.reset();
 				CATAPULT_LOG(debug) << "writers destroyed";
-				WAIT_FOR_ONE(*pNumCallbacks);
+				WAIT_FOR_ONE(numCallbacks);
 
 				// Assert: the operation result
 				assertCallbackCode(callbackCode);
@@ -818,7 +813,7 @@ namespace catapult { namespace net {
 		using SendFunction = consumer<PacketWriters&, const ionet::PacketPayload&>;
 		void RunVerifyWrittenDataTest(size_t numConnections, const SendFunction& send) {
 			// Arrange: connect to the specified number of nodes
-			auto pNumPacketsRead = CreateCounterPointer();
+			auto numPacketsRead = std::atomic<size_t>(0);
 			PacketWritersTestContext context(numConnections);
 			auto state = SetupMultiConnectionTest(context);
 
@@ -830,16 +825,16 @@ namespace catapult { namespace net {
 			size_t socketId = 0;
 			std::vector<ionet::ByteBuffer> receiveBuffers(numConnections);
 			for (const auto& pSocket : state.ServerSockets) {
-				pSocket->read([pNumPacketsRead, socketId, &receiveBuffers](auto, const auto* pPacket) {
+				pSocket->read([&numPacketsRead, socketId, &receiveBuffers](auto, const auto* pPacket) {
 					auto receiveBuffer = test::CopyPacketToBuffer(*pPacket);
 					receiveBuffers[socketId] = receiveBuffer;
-					++*pNumPacketsRead;
+					++numPacketsRead;
 				});
 				++socketId;
 			}
 
 			// - wait for all packets to be read
-			WAIT_FOR_VALUE(numConnections, *pNumPacketsRead);
+			WAIT_FOR_VALUE(numConnections, numPacketsRead);
 
 			// Assert: the handler was called once for each socket with the same buffer
 			for (auto i = 0u; i < numConnections; ++i)
@@ -872,7 +867,7 @@ namespace catapult { namespace net {
 
 	TEST(TEST_CLASS, PickOneWrapperReadsDataCorrectly) {
 		// Arrange: connect to a single node
-		auto pNumPacketsRead = CreateCounterPointer();
+		auto numPacketsRead = std::atomic<size_t>(0);
 		PacketWritersTestContext context;
 		auto state = SetupMultiConnectionTest(context);
 
@@ -886,19 +881,19 @@ namespace catapult { namespace net {
 
 		// Act: read the packet using the supplied function
 		ionet::ByteBuffer receiveBuffer;
-		pIo->read([pNumPacketsRead, &receiveBuffer](auto code, const auto* pPacket) {
+		pIo->read([&numPacketsRead, &receiveBuffer](auto code, const auto* pPacket) {
 			if (!pPacket) {
-				// test will fail because *pNumPacketsRead is not incremented in this case
+				// test will fail because numPacketsRead is not incremented in this case
 				CATAPULT_LOG(warning) << "read failed with " << code;
 				return;
 			}
 
 			receiveBuffer = test::CopyPacketToBuffer(*pPacket);
-			++*pNumPacketsRead;
+			++numPacketsRead;
 		});
 
 		// - wait for the packet to be read
-		WAIT_FOR_ONE(*pNumPacketsRead);
+		WAIT_FOR_ONE(numPacketsRead);
 
 		// Assert: the expected packet was read
 		EXPECT_EQ(sendBuffer, receiveBuffer);
@@ -906,7 +901,7 @@ namespace catapult { namespace net {
 
 	TEST(TEST_CLASS, PickOneWrapperDestroyedDuringReadDoesNotCauseCrash) {
 		// Arrange: connect to a single node
-		auto pNumPacketsRead = CreateCounterPointer();
+		auto numPacketsRead = std::atomic<size_t>(0);
 		PacketWritersTestContext context;
 		auto state = SetupMultiConnectionTest(context);
 
@@ -920,16 +915,16 @@ namespace catapult { namespace net {
 
 		// Act: read the packet using the supplied function
 		ionet::ByteBuffer receiveBuffer;
-		pIo->read([pNumPacketsRead, &receiveBuffer](auto code, const auto* pPacket) {
+		pIo->read([&numPacketsRead, &receiveBuffer](auto code, const auto* pPacket) {
 			if (!pPacket) {
 				CATAPULT_LOG(warning) << "read failed with " << code;
-				++*pNumPacketsRead;
+				++numPacketsRead;
 				return;
 			}
 
 			CATAPULT_LOG(debug) << "read completed";
 			receiveBuffer = test::CopyPacketToBuffer(*pPacket);
-			++*pNumPacketsRead;
+			++numPacketsRead;
 		});
 
 		// - destroy the wrapper
@@ -937,7 +932,7 @@ namespace catapult { namespace net {
 		CATAPULT_LOG(debug) << "destroyed wrapper";
 
 		// - wait for the packet to be read
-		WAIT_FOR_ONE(*pNumPacketsRead);
+		WAIT_FOR_ONE(numPacketsRead);
 
 		// Assert: check the packet only if it was read
 		if (!receiveBuffer.empty())
@@ -1001,12 +996,12 @@ namespace catapult { namespace net {
 		pIo2->write(test::BufferToPacketPayload(sendBuffers[1]), EmptyWriteCallback);
 
 		// - verify read data (pIo2 should not reference the same socket as pIo1)
-		auto pNumReads = CreateCounterPointer();
-		state.ServerSockets[0]->read(HandleSocketReadInSendTests(pNumReads, sendBuffers[0]));
-		state.ServerSockets[1]->read(HandleSocketReadInSendTests(pNumReads, sendBuffers[1]));
+		auto numReads = std::atomic<size_t>(0);
+		state.ServerSockets[0]->read(HandleSocketReadInSendTests(numReads, sendBuffers[0]));
+		state.ServerSockets[1]->read(HandleSocketReadInSendTests(numReads, sendBuffers[1]));
 
 		// - wait for the data to be read
-		WAIT_FOR_VALUE(2u, *pNumReads);
+		WAIT_FOR_VALUE(2u, numReads);
 
 		// - 2 sockets are checked out, so none are available
 		EXPECT_NUM_ACTIVE_AVAILABLE_WRITERS(2u, 0u, writers);
@@ -1045,47 +1040,54 @@ namespace catapult { namespace net {
 		pIo3->write(test::BufferToPacketPayload(sendBuffers[1]), EmptyWriteCallback);
 
 		// - verify read data (pIo3 should not reference the same socket as pIo1)
-		auto pNumReads = CreateCounterPointer();
-		state.ServerSockets[0]->read(HandleSocketReadInSendTests(pNumReads, sendBuffers[0]));
-		state.ServerSockets[1]->read(HandleSocketReadInSendTests(pNumReads, sendBuffers[1]));
+		auto numReads = std::atomic<size_t>(0);
+		state.ServerSockets[0]->read(HandleSocketReadInSendTests(numReads, sendBuffers[0]));
+		state.ServerSockets[1]->read(HandleSocketReadInSendTests(numReads, sendBuffers[1]));
 
 		// - wait for the data to be read
-		WAIT_FOR_VALUE(2u, *pNumReads);
+		WAIT_FOR_VALUE(2u, numReads);
 
 		// - 2 sockets are checked out, so none are available
 		EXPECT_NUM_ACTIVE_AVAILABLE_WRITERS(2u, 0u, writers);
 	}
 
 	TEST(TEST_CLASS, CanBroadcastPacketOnlyToAvailablePeers) {
-		// Arrange: establish multiple connections
+		// Arrange: keep numReads alive because counter is incremented during writers destruction by reads queued for unavailable peers
 		constexpr auto Num_Connections = 5u;
-		PacketWritersTestContext context(Num_Connections);
-		auto& writers = *context.pWriters;
-		auto state = SetupMultiConnectionTest(context);
-		MultiConnectionStateGuard stateGuard(writers, state);
+		auto numReads = std::atomic<size_t>(0);
 
-		// Act: check out a few peers (0, 1)
-		auto pIo1 = writers.pickOne(Default_Timeout).io();
-		auto pIo2 = writers.pickOne(Default_Timeout).io();
+		{
+			// - establish multiple connections
+			PacketWritersTestContext context(Num_Connections);
+			auto& writers = *context.pWriters;
+			auto state = SetupMultiConnectionTest(context);
+			MultiConnectionStateGuard stateGuard(writers, state);
 
-		// - broadcast a random packet
-		auto buffer = test::GenerateRandomPacketBuffer(95);
-		writers.broadcast(test::BufferToPacketPayload(buffer));
+			// Act: check out a few peers (0, 1)
+			auto pIo1 = writers.pickOne(Default_Timeout).io();
+			auto pIo2 = writers.pickOne(Default_Timeout).io();
 
-		// Assert: the broadcast packet was only sent to available peers
-		//         the checked out peers received no packets
-		auto i = 0u;
-		auto pNumReads = CreateCounterPointer();
-		for (const auto& pSocket : state.ServerSockets) {
-			pSocket->read(HandleSocketReadInSendTests(pNumReads, buffer, i > 1));
-			++i;
+			// - broadcast a random packet
+			auto buffer = test::GenerateRandomPacketBuffer(95);
+			writers.broadcast(test::BufferToPacketPayload(buffer));
+
+			// Assert: the broadcast packet was only sent to available peers
+			//         the checked out peers received no packets
+			auto i = 0u;
+			for (const auto& pSocket : state.ServerSockets) {
+				pSocket->read(HandleSocketReadInSendTests(numReads, buffer, i > 1));
+				++i;
+			}
+
+			// - note that nothing is written to the checked out sockets so they do not update the read counter
+			WAIT_FOR_VALUE(Num_Connections - 2, numReads);
+
+			// - all connections are still open but two peers are checked out
+			EXPECT_NUM_ACTIVE_AVAILABLE_WRITERS(Num_Connections, Num_Connections - 2, writers);
 		}
 
-		// - note that nothing is written to the checked out sockets so they do not update the read counter
-		WAIT_FOR_VALUE(Num_Connections - 2, *pNumReads);
-
-		// - all connections are still open but two peers are checked out
-		EXPECT_NUM_ACTIVE_AVAILABLE_WRITERS(Num_Connections, Num_Connections - 2, writers);
+		// Sanity:
+		WAIT_FOR_VALUE(Num_Connections, numReads);
 	}
 
 	TEST(TEST_CLASS, BroadcastDoesNotInvalidateCheckedOutPeers) {
@@ -1111,14 +1113,14 @@ namespace catapult { namespace net {
 		// Assert: the broadcast packet was only sent to available peers
 		//         the checked out peers received different packets
 		auto i = 0u;
-		auto pNumReads = CreateCounterPointer();
+		auto numReads = std::atomic<size_t>(0);
 		for (const auto& pSocket : state.ServerSockets) {
-			pSocket->read(HandleSocketReadInSendTests(pNumReads, sendBuffers[std::min<size_t>(i, 2)]));
+			pSocket->read(HandleSocketReadInSendTests(numReads, sendBuffers[std::min<size_t>(i, 2)]));
 			++i;
 		}
 
 		// - wait for all packets to be read
-		WAIT_FOR_VALUE(Num_Connections, *pNumReads);
+		WAIT_FOR_VALUE(Num_Connections, numReads);
 
 		// - all connections are still open but two peers are checked out
 		EXPECT_NUM_ACTIVE_AVAILABLE_WRITERS(Num_Connections, Num_Connections - 2, writers);
@@ -1239,9 +1241,9 @@ namespace catapult { namespace net {
 	TEST(TEST_CLASS, CanReconnectToNodeWithInitialConnectFailure) {
 		// Arrange: try to connect to a server that isn't running (the connection should fail)
 		PacketWritersTestContext context;
-		auto pNumCallbacks = CreateCounterPointer();
-		context.pWriters->connect(context.serverNode(), [pNumCallbacks](const auto&) { ++*pNumCallbacks; });
-		WAIT_FOR_ONE(*pNumCallbacks);
+		auto numCallbacks = std::atomic<size_t>(0);
+		context.pWriters->connect(context.serverNode(), [&numCallbacks](const auto&) { ++numCallbacks; });
+		WAIT_FOR_ONE(numCallbacks);
 
 		// Sanity: no connections were made
 		EXPECT_NUM_ACTIVE_WRITERS(0u, *context.pWriters);

@@ -40,7 +40,7 @@ namespace catapult { namespace observers {
 			}
 
 			static auto DestinationAccount(const state::HashLockInfo& lockInfo) {
-				return lockInfo.SenderPublicKey;
+				return lockInfo.OwnerAddress;
 			}
 		};
 	}
@@ -50,5 +50,5 @@ namespace catapult { namespace observers {
 			return;
 
 		LockStatusAccountBalanceObserver<HashTraits>(notification, context);
-	});
+	})
 }}

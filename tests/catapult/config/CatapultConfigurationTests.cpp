@@ -21,6 +21,7 @@
 #include "catapult/config/CatapultConfiguration.h"
 #include "catapult/config/CatapultKeys.h"
 #include "catapult/crypto/OpensslKeyUtils.h"
+#include "catapult/model/Address.h"
 #include "catapult/utils/HexParser.h"
 #include "tests/test/net/CertificateLocator.h"
 #include "tests/test/nodeps/Filesystem.h"
@@ -52,7 +53,7 @@ namespace catapult { namespace config {
 			EXPECT_EQ(model::NodeIdentityEqualityStrategy::Host, config.Network.NodeEqualityStrategy);
 			EXPECT_EQ(
 					utils::ParseByteArray<Key>("C67F465087EF681824805B7E9FF3B2728A4EE847DE044DE5D9FA415F7660B08E"),
-					config.Network.PublicKey);
+					config.Network.NemesisSignerPublicKey);
 			EXPECT_EQ(
 					utils::ParseByteArray<GenerationHashSeed>("57F7DA205008026C776CB6AED843393F04CD458E0AA2D9F1D5F31A402072B2D6"),
 					config.Network.GenerationHashSeed);
@@ -65,7 +66,6 @@ namespace catapult { namespace config {
 
 			EXPECT_EQ(utils::TimeSpan::FromSeconds(30), config.BlockGenerationTargetTime);
 			EXPECT_EQ(3000u, config.BlockTimeSmoothingFactor);
-			EXPECT_EQ(30u, config.BlockFinalizationInterval);
 
 			EXPECT_EQ(39u, config.ImportanceGrouping);
 			EXPECT_EQ(5u, config.ImportanceActivityPercentage);
@@ -84,11 +84,14 @@ namespace catapult { namespace config {
 			EXPECT_EQ(Amount(4'000'000), config.MaxHarvesterBalance);
 			EXPECT_EQ(Amount(50'000), config.MinVoterBalance);
 
+			EXPECT_EQ(100u, config.VotingSetGrouping);
+			EXPECT_EQ(3u, config.MaxVotingKeysPerAccount);
+			EXPECT_EQ(72u, config.MinVotingKeyLifetime);
+			EXPECT_EQ(72u * 365, config.MaxVotingKeyLifetime);
+
 			EXPECT_EQ(10u, config.HarvestBeneficiaryPercentage);
 			EXPECT_EQ(5u, config.HarvestNetworkPercentage);
-			EXPECT_EQ(
-					utils::ParseByteArray<Key>("FF5563F1C5824EE0CD868799FBE8744B46D5549973FDA499939C952D951494E4"),
-					config.HarvestNetworkFeeSinkPublicKey);
+			EXPECT_EQ(model::StringToAddress("SBPJ3LE4SF7Y25RCEC6MA5BXBP6W2TGB2XKMIDY"), config.HarvestNetworkFeeSinkAddress);
 
 			EXPECT_EQ(360u, config.BlockPruneInterval);
 			EXPECT_EQ(200'000u, config.MaxTransactionsPerBlock);
@@ -109,6 +112,7 @@ namespace catapult { namespace config {
 			EXPECT_TRUE(config.EnableTransactionSpamThrottling);
 			EXPECT_EQ(Amount(10'000'000), config.TransactionSpamThrottlingMaxBoostFee);
 
+			EXPECT_EQ(84u, config.MaxHashesPerSyncAttempt);
 			EXPECT_EQ(42u, config.MaxBlocksPerSyncAttempt);
 			EXPECT_EQ(utils::FileSize::FromMegabytes(100), config.MaxChainBytesPerSyncAttempt);
 
@@ -139,8 +143,6 @@ namespace catapult { namespace config {
 
 			EXPECT_EQ(utils::FileSize::FromMegabytes(5), config.MaxCacheDatabaseWriteBatchSize);
 			EXPECT_EQ(5'000u, config.MaxTrackedNodes);
-
-			EXPECT_EQ("/dev/urandom", config.BatchVerificationRandomSource);
 
 			EXPECT_TRUE(config.TrustedHosts.empty());
 			EXPECT_EQ(std::unordered_set<std::string>({ "127.0.0.1" }), config.LocalNetworks);
@@ -174,11 +176,11 @@ namespace catapult { namespace config {
 		void AssertDefaultLoggingConfiguration(
 				const LoggingConfiguration& config,
 				const std::string& expectedLogFilePattern,
-				utils::LogLevel expectedFileLogLevel = utils::LogLevel::Info) {
+				utils::LogLevel expectedFileLogLevel = utils::LogLevel::info) {
 			// Assert:
 			// - console (basic)
 			EXPECT_EQ(utils::LogSinkType::Sync, config.Console.SinkType);
-			EXPECT_EQ(utils::LogLevel::Info, config.Console.Level);
+			EXPECT_EQ(utils::LogLevel::info, config.Console.Level);
 			EXPECT_TRUE(config.Console.ComponentLevels.empty());
 
 			// - console (specific)
@@ -274,7 +276,7 @@ namespace catapult { namespace config {
 		AssertDefaultUserConfiguration(config.User);
 		AssertDefaultExtensionsConfiguration(config.Extensions, {
 			"extension.harvesting", "extension.syncsource",
-			"extension.diagnostics", "extension.hashcache", "extension.networkheight",
+			"extension.diagnostics", "extension.finalization", "extension.hashcache", "extension.networkheight",
 			"extension.nodediscovery", "extension.packetserver", "extension.pluginhandlers", "extension.sync",
 			"extension.timesync", "extension.transactionsink", "extension.unbondedpruning"
 		});
@@ -304,7 +306,7 @@ namespace catapult { namespace config {
 		// Assert:
 		AssertDefaultBlockChainConfiguration(config.BlockChain);
 		AssertDefaultNodeConfiguration(config.Node);
-		AssertDefaultLoggingConfiguration(config.Logging, "catapult_recovery%4N.log", utils::LogLevel::Debug);
+		AssertDefaultLoggingConfiguration(config.Logging, "catapult_recovery%4N.log", utils::LogLevel::debug);
 		AssertDefaultUserConfiguration(config.User);
 		AssertDefaultExtensionsConfiguration(config.Extensions, { "extension.hashcache" });
 		AssertDefaultInflationConfiguration(config.Inflation);

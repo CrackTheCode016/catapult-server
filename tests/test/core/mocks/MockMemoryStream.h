@@ -23,6 +23,8 @@
 
 namespace catapult { namespace mocks {
 
+	// region MockMemoryStream
+
 	/// Memory-based implementation of input and output stream.
 	class MockMemoryStream final : public extensions::MemoryStream {
 	public:
@@ -39,4 +41,24 @@ namespace catapult { namespace mocks {
 	private:
 		size_t m_flushCount;
 	};
+
+	// endregion
+
+	// region MockSeekableMemoryStream
+
+	/// Memory-based implementation of seekable input and output stream.
+	class MockSeekableMemoryStream : public extensions::MemoryStream {
+	public:
+		/// Creates an empty memory stream.
+		MockSeekableMemoryStream();
+
+	public:
+		/// Copies the contents of this stream into \a dest.
+		void copyTo(MockSeekableMemoryStream& dest) const;
+
+	private:
+		std::vector<uint8_t> m_buffer;
+	};
+
+	// endregion
 }}

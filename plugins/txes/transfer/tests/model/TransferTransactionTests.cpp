@@ -32,21 +32,21 @@ namespace catapult { namespace model {
 
 	// region size + alignment + properties
 
-#define TRANSACTION_FIELDS FIELD(RecipientAddress) FIELD(MosaicsCount) FIELD(MessageSize)
+#define TRANSACTION_FIELDS FIELD(RecipientAddress) FIELD(MessageSize) FIELD(MosaicsCount)
 
 	namespace {
 		template<typename T>
 		void AssertTransactionHasExpectedSize(size_t baseSize) {
 			// Arrange:
-			auto expectedSize = baseSize + sizeof(uint32_t);
+			auto expectedSize = baseSize + sizeof(uint32_t) + sizeof(uint8_t);
 
-#define FIELD(X) expectedSize += sizeof(T::X);
+#define FIELD(X) expectedSize += SizeOf32<decltype(T::X)>();
 			TRANSACTION_FIELDS
 #undef FIELD
 
 			// Assert:
 			EXPECT_EQ(expectedSize, sizeof(T));
-			EXPECT_EQ(baseSize + 4 + 28u, sizeof(T));
+			EXPECT_EQ(baseSize + 5 + 27u, sizeof(T));
 		}
 
 		template<typename T>
@@ -77,7 +77,7 @@ namespace catapult { namespace model {
 	namespace {
 		struct TransferTransactionTraits {
 			static auto GenerateEntityWithAttachments(uint8_t numMosaics, uint16_t messageSize) {
-				uint32_t entitySize = sizeof(TransferTransaction) + messageSize + numMosaics * sizeof(Mosaic);
+				uint32_t entitySize = SizeOf32<TransferTransaction>() + messageSize + numMosaics * SizeOf32<UnresolvedMosaic>();
 				auto pTransaction = utils::MakeUniqueWithSize<TransferTransaction>(entitySize);
 				pTransaction->Size = entitySize;
 				pTransaction->MosaicsCount = numMosaics;
@@ -118,8 +118,8 @@ namespace catapult { namespace model {
 		auto realSize = TransferTransaction::CalculateRealSize(transaction);
 
 		// Assert:
-		EXPECT_EQ(16u, sizeof(Mosaic));
-		EXPECT_EQ(sizeof(TransferTransaction) + 100 + 7 * sizeof(Mosaic), realSize);
+		EXPECT_EQ(16u, sizeof(UnresolvedMosaic));
+		EXPECT_EQ(sizeof(TransferTransaction) + 100 + 7 * sizeof(UnresolvedMosaic), realSize);
 	}
 
 	TEST(TEST_CLASS, CalculateRealSizeDoesNotOverflowWithMaxValues) {
@@ -134,7 +134,7 @@ namespace catapult { namespace model {
 
 		// Assert:
 		ASSERT_EQ(0xFFFFFFFF, transaction.Size);
-		EXPECT_EQ(sizeof(TransferTransaction) + 0xFFFF + 0xFF * sizeof(Mosaic), realSize);
+		EXPECT_EQ(sizeof(TransferTransaction) + 0xFFFF + 0xFF * sizeof(UnresolvedMosaic), realSize);
 		EXPECT_GT(0xFFFFFFFF, realSize);
 	}
 

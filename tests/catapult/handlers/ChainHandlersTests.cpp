@@ -158,20 +158,21 @@ namespace catapult { namespace handlers {
 
 	// endregion
 
-	// region ChainInfoHandler
+	// region ChainStatisticsHandler
 
-	TEST(TEST_CLASS, ChainInfoHandler_DoesNotRespondToMalformedRequest) {
+	TEST(TEST_CLASS, ChainStatisticsHandler_DoesNotRespondToMalformedRequest) {
 		// Arrange:
 		ionet::ServerPacketHandlers handlers;
 		auto pStorage = CreateStorage(12);
-		RegisterChainInfoHandler(
+		RegisterChainStatisticsHandler(
 				handlers,
 				*pStorage,
-				[]() { return model::ChainScore(0x7890ABCDEF012345, 0x7711BBCC00DD99AA); });
+				[]() { return model::ChainScore(0x7890ABCDEF012345, 0x7711BBCC00DD99AA); },
+				[]() { return Height(7); });
 
 		// - malform the packet
 		auto pPacket = ionet::CreateSharedPacket<ionet::Packet>();
-		pPacket->Type = ionet::PacketType::Chain_Info;
+		pPacket->Type = ionet::PacketType::Chain_Statistics;
 		++pPacket->Size;
 
 		// Act:
@@ -182,29 +183,30 @@ namespace catapult { namespace handlers {
 		test::AssertNoResponse(handlerContext);
 	}
 
-	TEST(TEST_CLASS, ChainInfoHandler_WritesChainInfoResponseInResponseToValidRequest) {
+	TEST(TEST_CLASS, ChainStatisticsHandler_WritesChainStatisticsResponseInResponseToValidRequest) {
 		// Arrange:
 		ionet::ServerPacketHandlers handlers;
 		auto pStorage = CreateStorage(12);
-		RegisterChainInfoHandler(
+		RegisterChainStatisticsHandler(
 				handlers,
 				*pStorage,
-				[]() { return model::ChainScore(0x7890ABCDEF012345, 0x7711BBCC00DD99AA); });
+				[]() { return model::ChainScore(0x7890ABCDEF012345, 0x7711BBCC00DD99AA); },
+				[]() { return Height(7); });
 
 		// - create a valid request
 		auto pPacket = ionet::CreateSharedPacket<ionet::Packet>();
-		pPacket->Type = ionet::PacketType::Chain_Info;
+		pPacket->Type = ionet::PacketType::Chain_Statistics;
 
 		// Act:
 		ionet::ServerPacketHandlerContext handlerContext;
 		EXPECT_TRUE(handlers.process(*pPacket, handlerContext));
 
-		// Assert: chain score is written
-		test::AssertPacketHeader(handlerContext, sizeof(api::ChainInfoResponse), ionet::PacketType::Chain_Info);
+		// Assert: chain statistics are written
+		test::AssertPacketHeader(handlerContext, sizeof(api::ChainStatisticsResponse), ionet::PacketType::Chain_Statistics);
 
 		const auto* pResponse = reinterpret_cast<const uint64_t*>(test::GetSingleBufferData(handlerContext));
 		EXPECT_EQ(12u, pResponse[0]); // height
-		EXPECT_EQ(1u, pResponse[1]); // finalized height
+		EXPECT_EQ(7u, pResponse[1]); // finalized height
 		EXPECT_EQ(0x7890ABCDEF012345u, pResponse[2]); // score high
 		EXPECT_EQ(0x7711BBCC00DD99AAu, pResponse[3]); // score low
 	}
@@ -250,7 +252,7 @@ namespace catapult { namespace handlers {
 			auto expectedSize = sizeof(ionet::PacketHeader) + sizeof(Hash256) * expectedHeights.size();
 			test::AssertPacketHeader(handlerContext, expectedSize, ionet::PacketType::Block_Hashes);
 
-			auto pData = test::GetSingleBufferData(handlerContext);
+			const auto* pData = test::GetSingleBufferData(handlerContext);
 			auto storageView = pStorage->view();
 			for (auto i = 0u; i < expectedHeights.size(); ++i) {
 				// - calculate the expected hash

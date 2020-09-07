@@ -32,28 +32,28 @@ namespace catapult { namespace api {
 		std::shared_ptr<ionet::Packet> CreatePacketWithTransactionInfos(uint16_t numTransactions) {
 			// Arrange: create transactions with variable (incrementing) sizes
 			//          (each info in this test has two parts: (1) tag, (2) transaction)
-			uint32_t payloadSize = numTransactions * sizeof(uint64_t);
+			uint32_t payloadSize = numTransactions * SizeOf32<uint64_t>();
 			for (uint16_t i = 0u; i < numTransactions; ++i) {
-				uint32_t transactionSize = sizeof(TransactionType) + i + 1;
+				uint32_t transactionSize = SizeOf32<TransactionType>() + i + 1;
 				payloadSize += transactionSize + utils::GetPaddingSize(transactionSize, 8);
 			}
 
 			auto pPacket = ionet::CreateSharedPacket<ionet::Packet>(payloadSize);
 			test::FillWithRandomData({ pPacket->Data(), payloadSize });
 
-			auto pData = pPacket->Data();
+			auto* pData = pPacket->Data();
 			for (uint16_t i = 0u; i < numTransactions; ++i) {
 				// - tag (transaction and no cosignatures)
 				reinterpret_cast<uint64_t&>(*pData) = 0x8000;
 				pData += sizeof(uint64_t);
 
 				// - transaction
-				uint32_t transactionSize = sizeof(TransactionType) + i + 1;
+				uint32_t transactionSize = SizeOf32<TransactionType>() + i + 1;
 				auto& transaction = reinterpret_cast<TransactionType&>(*pData);
 				transaction.Size = transactionSize;
 				transaction.Type = TransactionType::Entity_Type;
 				transaction.Deadline = Timestamp(5 * i);
-				transaction.Data.Size = i + 1;
+				transaction.Data.Size = static_cast<uint16_t>(i + 1);
 				pData += transactionSize;
 
 				// - padding

@@ -64,7 +64,7 @@ namespace catapult { namespace consumers {
 			const std::shared_ptr<const validators::ParallelValidationPolicy>& pValidationPolicy,
 			const RequiresValidationPredicate& requiresValidationPredicate);
 
-	/// Creates a consumer that runs batch signature validation using \a pPublisher and \a pPool for the network with the specified
+	/// Creates a consumer that runs batch signature validation using \a pPublisher and \a pool for the network with the specified
 	/// generation hash seed (\a generationHashSeed).
 	/// Validation will only be performed for entities for which \a requiresValidationPredicate returns \c true.
 	/// \a randomFiller is used to generate random bytes.
@@ -72,18 +72,16 @@ namespace catapult { namespace consumers {
 			const GenerationHashSeed& generationHashSeed,
 			const crypto::RandomFiller& randomFiller,
 			const std::shared_ptr<const model::NotificationPublisher>& pPublisher,
-			const std::shared_ptr<thread::IoThreadPool>& pPool,
+			thread::IoThreadPool& pool,
 			const RequiresValidationPredicate& requiresValidationPredicate);
 
 	/// Creates a consumer that attempts to synchronize a remote chain with the local chain, which is composed of
 	/// state (in \a cache) and blocks (in \a storage).
-	/// \a maxRollbackBlocks The maximum number of blocks that can be rolled back.
 	/// \a handlers are used to customize the sync process.
 	/// \note This consumer is non-const because it updates the element generation hashes.
 	disruptor::DisruptorConsumer CreateBlockChainSyncConsumer(
 			cache::CatapultCache& cache,
 			io::BlockStorageCache& storage,
-			uint32_t maxRollbackBlocks,
 			const BlockChainSyncHandlers& handlers);
 
 	/// Creates a consumer that cleans up temporary state produced by the block chain sync consumer given \a dataDirectory.

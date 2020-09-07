@@ -33,8 +33,8 @@ namespace catapult { namespace state {
 #pragma pack(push, 1)
 
 		struct MetadataEntryHeader {
-			Key SourcePublicKey;
-			Key TargetPublicKey;
+			Address SourceAddress;
+			Address TargetAddress;
 			uint64_t ScopedMetadataKey;
 			uint64_t TargetId;
 			model::MetadataType MetadataType;
@@ -99,8 +99,8 @@ namespace catapult { namespace state {
 
 	namespace {
 		void AssertEqual(const MetadataEntryHeader& header, const MetadataKey& key) {
-			EXPECT_EQ(header.SourcePublicKey, key.sourcePublicKey());
-			EXPECT_EQ(header.TargetPublicKey, key.targetPublicKey());
+			EXPECT_EQ(header.SourceAddress, key.sourceAddress());
+			EXPECT_EQ(header.TargetAddress, key.targetAddress());
 			EXPECT_EQ(header.ScopedMetadataKey, key.scopedMetadataKey());
 			EXPECT_EQ(header.TargetId, key.targetId());
 			EXPECT_EQ(header.MetadataType, key.metadataType());
@@ -156,11 +156,12 @@ namespace catapult { namespace state {
 	METADATA_TRAITS_BASED_TEST(CannotLoadWithInvalidMetadataType) {
 		// Arrange:
 		std::vector<uint8_t> buffer;
-		mocks::MockMemoryStream outputStream(buffer);
+		mocks::MockMemoryStream stream(buffer);
 
 		auto entry = CreateRandomMetadataEntry<TTraits>(std::vector<uint8_t>());
 
-		MetadataEntrySerializer::Save(entry, outputStream);
+		MetadataEntrySerializer::Save(entry, stream);
+		stream.seek(0);
 
 		// Sanity:
 		ASSERT_EQ(sizeof(MetadataEntryHeader), buffer.size());
@@ -170,7 +171,7 @@ namespace catapult { namespace state {
 		header.MetadataType = static_cast<model::MetadataType>(3);
 
 		// Act + Assert:
-		EXPECT_THROW(MetadataEntrySerializer::Load(outputStream), catapult_invalid_argument);
+		EXPECT_THROW(MetadataEntrySerializer::Load(stream), catapult_invalid_argument);
 	}
 
 	// endregion

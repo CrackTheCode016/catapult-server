@@ -26,10 +26,14 @@
 namespace catapult { namespace validators {
 
 	namespace {
-		template<typename TKey>
-		ValidationResult CheckAccount(uint16_t maxMosaics, MosaicId mosaicId, const TKey& key, const ValidatorContext& context) {
+		template<typename TAccountIdentifier>
+		ValidationResult CheckAccount(
+				uint16_t maxMosaics,
+				MosaicId mosaicId,
+				const TAccountIdentifier& accountIdentifier,
+				const ValidatorContext& context) {
 			const auto& accountStateCache = context.Cache.sub<cache::AccountStateCache>();
-			auto accountStateIter = accountStateCache.find(key);
+			auto accountStateIter = accountStateCache.find(accountIdentifier);
 			const auto& balances = accountStateIter.get().Balances;
 			if (balances.get(mosaicId) != Amount())
 				return ValidationResult::Success;
@@ -64,7 +68,7 @@ namespace catapult { namespace validators {
 			if (model::MosaicSupplyChangeAction::Decrease == notification.Action)
 				return ValidationResult::Success;
 
-			return CheckAccount(maxMosaics, context.Resolvers.resolve(notification.MosaicId), notification.Signer, context);
+			return CheckAccount(maxMosaics, context.Resolvers.resolve(notification.MosaicId), notification.Owner, context);
 		});
 	}
 }}

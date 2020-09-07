@@ -22,7 +22,7 @@
 #include "CalculatorUtils.h"
 #include "catapult/cache_core/AccountStateCache.h"
 #include "catapult/model/BlockChainConfiguration.h"
-#include "catapult/model/ImportanceHeight.h"
+#include "catapult/model/HeightGrouping.h"
 #include "catapult/state/AccountImportanceSnapshots.h"
 #include "catapult/utils/StackLogger.h"
 #include <boost/multiprecision/cpp_int.hpp>
@@ -39,11 +39,11 @@ namespace catapult { namespace importance {
 
 		public:
 			void recalculate(model::ImportanceHeight importanceHeight, cache::AccountStateCacheDelta& cache) const override {
-				utils::StackLogger stopwatch("PosImportanceCalculator::recalculate", utils::LogLevel::Debug);
+				utils::StackLogger stopwatch("PosImportanceCalculator::recalculate", utils::LogLevel::debug);
 
 				// 1. get high value accounts (notice two step lookup because only const iteration is supported)
-				auto highValueAddressesTuple = cache.highValueAddresses();
-				const auto& highValueAddresses = highValueAddressesTuple.Current;
+				const auto& highValueAccounts = cache.highValueAccounts();
+				const auto& highValueAddresses = highValueAccounts.addresses();
 				std::vector<AccountSummary> accountSummaries;
 				accountSummaries.reserve(highValueAddresses.size());
 
@@ -84,7 +84,7 @@ namespace catapult { namespace importance {
 				CATAPULT_LOG(debug) << "recalculated importances (" << highValueAddresses.size() << " / " << cache.size() << " eligible)";
 
 				// 5. disable collection of activity for the removed accounts
-				const auto& removedHighValueAddresses = highValueAddressesTuple.Removed;
+				const auto& removedHighValueAddresses = highValueAccounts.removedAddresses();
 				for (const auto& address : removedHighValueAddresses) {
 					auto accountStateIter = cache.find(address);
 					if (!accountStateIter.tryGet())

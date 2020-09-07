@@ -22,6 +22,7 @@ Make sure that the server's host is accessible from the internet and that the po
 
 ## Building catapult-server
 
+ * [Build using CONAN recipes](BUILD-conan.md)
  * [Linux instructions](BUILDLIN.md)
  * [Windows instructions](BUILDWIN.md)
 
@@ -41,6 +42,12 @@ race:~weak_ptr
 race:global_logger::get()
 ```
 
-### Running a private network
+## Running a private network
 
 * [Linux instructions](RUNNETWORKLIN.md)
+* [Network configuration](https://nemtech.github.io/guides/network/configuring-network-properties.html)
+
+## Running a peer node
+
+* [Linux instructions](RUNPEERLIN.md)
+* [Node configuration](https://nemtech.github.io/guides/network/configuring-node-properties.html)

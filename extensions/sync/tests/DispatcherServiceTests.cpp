@@ -79,6 +79,7 @@ namespace catapult { namespace sync {
 			// importance grouping must be non-zero
 			auto config = model::BlockChainConfiguration::Uninitialized();
 			config.ImportanceGrouping = 1;
+			config.VotingSetGrouping = 1;
 
 			// create the cache
 			return test::CreateEmptyCatapultCache<test::CoreSystemCacheFactory>(config);
@@ -99,7 +100,7 @@ namespace catapult { namespace sync {
 			accountStateCache.addAccount(signer.publicKey(), Height(1));
 			auto& accountState = accountStateCache.find(signer.publicKey()).get();
 			accountState.ImportanceSnapshots.set(Importance(1'000'000'000), model::ImportanceHeight(1));
-			accountState.SupplementalAccountKeys.vrfPublicKey().set(vrfPublicKey);
+			accountState.SupplementalPublicKeys.vrf().set(vrfPublicKey);
 
 			// commit all changes
 			cache.commit(Height(1));
@@ -242,7 +243,7 @@ namespace catapult { namespace sync {
 				auto indexFile = io::IndexFile((tempPath() / "commit_step.dat").generic_string());
 				return indexFile.exists()
 						? std::make_pair(static_cast<consumers::CommitOperationStep>(indexFile.get()), true)
-						: std::make_pair(static_cast<consumers::CommitOperationStep>(-1), false);
+						: std::make_pair(static_cast<consumers::CommitOperationStep>(std::numeric_limits<uint16_t>::max()), false);
 			}
 
 		public:
@@ -438,6 +439,10 @@ namespace catapult { namespace sync {
 		EXPECT_EQ(0u, context.counter(Rollback_Elements_Committed_Recent));
 		EXPECT_EQ(0u, context.counter(Rollback_Elements_Ignored_All));
 		EXPECT_EQ(0u, context.counter(Rollback_Elements_Ignored_Recent));
+	}
+
+	TEST(TEST_CLASS, TasksAreRegistered) {
+		test::AssertRegisteredTasks(TestContext(), { "batch transaction task" });
 	}
 
 	// endregion

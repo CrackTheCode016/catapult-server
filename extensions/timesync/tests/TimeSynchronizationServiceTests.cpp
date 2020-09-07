@@ -150,16 +150,7 @@ namespace catapult { namespace timesync {
 	}
 
 	TEST(TEST_CLASS, TasksAreRegistered) {
-		// Arrange:
-		TestContext context(CreateCache());
-
-		// Act:
-		context.boot();
-		const auto& tasks = context.testState().state().tasks();
-
-		// Assert:
-		EXPECT_EQ(1u, tasks.size());
-		EXPECT_EQ(Task_Name, tasks.cbegin()->Name);
+		test::AssertRegisteredTasks(TestContext(CreateCache()), { Task_Name });
 	}
 
 	TEST(TEST_CLASS, ServiceUsesNetworkTime) {
@@ -218,7 +209,9 @@ namespace catapult { namespace timesync {
 			auto cache = CreateCache(Total_Chain_Importance);
 			{
 				auto cacheDelta = cache.createDelta();
-				test::AddAccount(cacheDelta.sub<cache::AccountStateCache>(), serverPublicKey, importance, model::ImportanceHeight(1));
+				auto& accountStateCacheDelta = cacheDelta.sub<cache::AccountStateCache>();
+				test::AddAccount(accountStateCacheDelta, serverPublicKey, importance, model::ImportanceHeight(1));
+				accountStateCacheDelta.updateHighValueAccounts(Height(1));
 				cache.commit(Height(1));
 			}
 

@@ -20,7 +20,6 @@
 
 #include "ZeroMqEntityPublisher.h"
 #include "PublisherUtils.h"
-#include "catapult/model/Address.h"
 #include "catapult/model/Cosignature.h"
 #include "catapult/model/Elements.h"
 #include "catapult/model/NotificationSubscriber.h"
@@ -144,7 +143,7 @@ namespace catapult { namespace zeromq {
 
 		zmq::multipart_t multipart;
 		auto marker = BlockMarker::Block_Marker;
-		multipart.addmem(&marker, sizeof(marker));
+		multipart.addmem(&marker, sizeof(BlockMarker));
 		multipart.addmem(static_cast<const void*>(&blockElement.Block), sizeof(model::BlockHeader));
 		multipart.addmem(static_cast<const void*>(&blockElement.EntityHash), Hash256::Size);
 		multipart.addmem(static_cast<const void*>(&blockElement.GenerationHash), Hash256::Size);
@@ -157,8 +156,21 @@ namespace catapult { namespace zeromq {
 
 		zmq::multipart_t multipart;
 		auto marker = BlockMarker::Drop_Blocks_Marker;
-		multipart.addmem(&marker, sizeof(marker));
+		multipart.addmem(&marker, sizeof(BlockMarker));
 		multipart.addmem(static_cast<const void*>(&height), sizeof(Height));
+		pMessageGroup->add(std::move(multipart));
+		m_pSynchronizedPublisher->queue(std::move(pMessageGroup));
+	}
+
+	void ZeroMqEntityPublisher::publishFinalizedBlock(Height height, const Hash256& hash, FinalizationPoint point) {
+		auto pMessageGroup = std::make_unique<MessageGroup>(CreateHeightMessageGenerator("finalized block", height));
+
+		zmq::multipart_t multipart;
+		auto marker = BlockMarker::Finalized_Block_Marker;
+		multipart.addmem(&marker, sizeof(BlockMarker));
+		multipart.addmem(static_cast<const void*>(&height), sizeof(Height));
+		multipart.addmem(static_cast<const void*>(&point), sizeof(FinalizationPoint));
+		multipart.addmem(static_cast<const void*>(&hash), Hash256::Size);
 		pMessageGroup->add(std::move(multipart));
 		m_pSynchronizedPublisher->queue(std::move(pMessageGroup));
 	}
@@ -211,18 +223,17 @@ namespace catapult { namespace zeromq {
 		auto topicMarker = TransactionMarker::Transaction_Status_Marker;
 		model::TransactionStatus transactionStatus(hash, transaction.Deadline, status);
 		publish("transaction status", topicMarker, WeakTransactionInfo(transaction, hash), [&transactionStatus](auto& multipart) {
-			multipart.addmem(static_cast<const void*>(&transactionStatus), sizeof(transactionStatus));
+			multipart.addmem(static_cast<const void*>(&transactionStatus), sizeof(model::TransactionStatus));
 		});
 	}
 
 	void ZeroMqEntityPublisher::publishCosignature(
 			const model::TransactionInfo& parentTransactionInfo,
-			const Key& signer,
-			const Signature& signature) {
+			const model::Cosignature& cosignature) {
 		auto topicMarker = TransactionMarker::Cosignature_Marker;
-		model::DetachedCosignature detachedCosignature(signer, signature, parentTransactionInfo.EntityHash);
+		model::DetachedCosignature detachedCosignature(cosignature, parentTransactionInfo.EntityHash);
 		publish("detached cosignature", topicMarker, WeakTransactionInfo(parentTransactionInfo), [&detachedCosignature](auto& multipart) {
-			multipart.addmem(static_cast<const void*>(&detachedCosignature), sizeof(detachedCosignature));
+			multipart.addmem(static_cast<const void*>(&detachedCosignature), sizeof(model::DetachedCosignature));
 		});
 	}
 

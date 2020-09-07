@@ -36,7 +36,7 @@ namespace catapult { namespace test {
 	std::unique_ptr<ionet::NetworkNode> CreateNetworkNode(const std::string& host, const std::string& name) {
 		auto hostSize = static_cast<uint8_t>(host.size());
 		auto nameSize = static_cast<uint8_t>(name.size());
-		uint32_t size = sizeof(ionet::NetworkNode) + hostSize + nameSize;
+		uint32_t size = SizeOf32<ionet::NetworkNode>() + hostSize + nameSize;
 
 		auto pNetworkNode = utils::MakeUniqueWithSize<ionet::NetworkNode>(size);
 		FillWithRandomData({ reinterpret_cast<uint8_t*>(pNetworkNode.get()), size });
@@ -55,7 +55,7 @@ namespace catapult { namespace test {
 
 		auto hostSize = static_cast<uint8_t>(host.size());
 		auto nameSize = static_cast<uint8_t>(name.size());
-		uint32_t payloadSize = sizeof(ionet::NetworkNode) + hostSize + nameSize;
+		uint32_t payloadSize = SizeOf32<ionet::NetworkNode>() + hostSize + nameSize;
 		auto pPacket = test::CreateRandomPacket(payloadSize, ionet::PacketType::Node_Discovery_Push_Ping);
 		auto& networkNode = reinterpret_cast<ionet::NetworkNode&>(*pPacket->Data());
 		networkNode.Size = payloadSize;
@@ -65,8 +65,8 @@ namespace catapult { namespace test {
 		networkNode.Version = version;
 		networkNode.HostSize = hostSize;
 		networkNode.FriendlyNameSize = nameSize;
-		memcpy(pPacket->Data() + sizeof(ionet::NetworkNode), host.data(), hostSize);
-		memcpy(pPacket->Data() + sizeof(ionet::NetworkNode) + hostSize, name.data(), nameSize);
+		std::memcpy(pPacket->Data() + sizeof(ionet::NetworkNode), host.data(), hostSize);
+		std::memcpy(pPacket->Data() + sizeof(ionet::NetworkNode) + hostSize, name.data(), nameSize);
 		return pPacket;
 	}
 
@@ -81,9 +81,9 @@ namespace catapult { namespace test {
 		auto pPacket = ionet::CreateSharedPacket<ionet::Packet>(payloadSize);
 		pPacket->Type = ionet::PacketType::Node_Discovery_Push_Peers;
 
-		auto pData = pPacket->Data();
+		auto* pData = pPacket->Data();
 		for (const auto& pNetworkNode : networkNodes) {
-			memcpy(pData, pNetworkNode.get(), pNetworkNode->Size);
+			std::memcpy(pData, pNetworkNode.get(), pNetworkNode->Size);
 			pData += pNetworkNode->Size;
 		}
 

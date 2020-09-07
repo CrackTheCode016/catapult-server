@@ -22,40 +22,7 @@
 #include "Hashes.h"
 #include "PrivateKey.h"
 #include "SecureZero.h"
-
-#ifdef __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wold-style-cast"
-#pragma clang diagnostic ignored "-Wcast-align"
-#pragma clang diagnostic ignored "-Wcast-qual"
-#pragma clang diagnostic ignored "-Wimplicit-fallthrough"
-#pragma clang diagnostic ignored "-Wsign-conversion"
-#pragma clang diagnostic ignored "-Wunused-function"
-#pragma clang diagnostic ignored "-Wreserved-id-macro"
-#pragma clang diagnostic ignored "-Wdocumentation"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic ignored "-Wunused-function"
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
-#elif defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4324) /* ed25519 structs use __declspec(align()) */
-#pragma warning(disable : 4388) /* signed/unsigned mismatch */
-#pragma warning(disable : 4505) /* unreferenced local function has been removed */
-#endif
-
-extern "C" {
-#include <donna/ed25519-donna.h>
-#include <donna/modm-donna-64bit.h>
-}
-
-#ifdef __clang__
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#pragma warning(pop)
-#endif
+#include <donna/catapult.h>
 
 namespace catapult { namespace crypto {
 
@@ -68,7 +35,7 @@ namespace catapult { namespace crypto {
 
 		uint8_t IsNegative(int8_t b) {
 			auto x = static_cast<uint8_t>(b);
-			x >>= 7;
+			x = static_cast<uint8_t>(x >> 7);
 			return x;
 		}
 
@@ -77,7 +44,7 @@ namespace catapult { namespace crypto {
 			auto uc = static_cast<uint8_t>(c);
 			auto x = static_cast<uint8_t>(ub ^ uc);
 			x = static_cast<uint8_t>(x - 1);
-			x >>= 7;
+			x = static_cast<uint8_t>(x >> 7);
 			return x;
 		}
 
@@ -91,13 +58,13 @@ namespace catapult { namespace crypto {
 
 			int8_t carry = 0;
 			for (auto i = 0u; i < 63; ++i) {
-				e[i] += carry;
-				carry = e[i] + 8;
-				carry >>= 4;
-				e[i] -= carry * (static_cast<int8_t>(1) << 4);
+				e[i] = static_cast<int8_t>(e[i] + carry);
+				carry = static_cast<int8_t>(e[i] + 8);
+				carry = static_cast<int8_t>(carry >> 4);
+				e[i] = static_cast<int8_t>(e[i] - carry * (1 << 4));
 			}
 
-			e[63] += carry;
+			e[63] = static_cast<int8_t>(e[63] + carry);
 		}
 
 		// endregion
@@ -247,7 +214,8 @@ namespace catapult { namespace crypto {
 			SetZero(H);
 			for (auto i = 63; 0 <= i; --i) {
 				if (0 != q[i]) {
-					ge25519_pnielsadd_p1p1(&R, &H, &precomputedTable[abs(q[i]) - 1], static_cast<uint8_t>(q[i]) >> 7);
+					auto signbit = static_cast<uint8_t>((q[i] & 0xFF) >> 7);
+					ge25519_pnielsadd_p1p1(&R, &H, &precomputedTable[abs(q[i]) - 1], signbit);
 					ge25519_p1p1_to_full(&H, &R);
 				}
 

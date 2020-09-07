@@ -40,6 +40,7 @@ namespace catapult { namespace tools { namespace health {
 		public:
 			ionet::Node Node;
 			Height ChainHeight;
+			Height FinalizedChainHeight;
 			model::ChainScore ChainScore;
 			model::EntityRange<model::DiagnosticCounterValue> DiagnosticCounters;
 		};
@@ -50,19 +51,25 @@ namespace catapult { namespace tools { namespace health {
 
 		// region futures
 
-		thread::future<bool> CreateChainInfoFuture(thread::IoThreadPool& pool, ionet::PacketIo& io, NodeInfo& nodeInfo) {
-			thread::future<api::ChainInfo> chainInfoFuture;
+		thread::future<api::ChainStatistics> StartChainStatisticsFuture(
+				thread::IoThreadPool& pool,
+				ionet::PacketIo& io,
+				NodeInfo& nodeInfo) {
 			if (!HasFlag(ionet::NodeRoles::Peer, nodeInfo.Node.metadata().Roles)) {
-				chainInfoFuture = CreateApiNodeChainInfoFuture(pool, nodeInfo.Node);
+				return CreateApiNodeChainStatisticsFuture(pool, nodeInfo.Node);
 			} else {
 				auto pApi = api::CreateRemoteChainApiWithoutRegistry(io);
-				chainInfoFuture = pApi->chainInfo();
+				return pApi->chainStatistics();
 			}
+		}
 
-			return chainInfoFuture.then([&nodeInfo](auto&& infoFuture) {
-				return UnwrapFutureAndSuppressErrors("querying chain info", std::move(infoFuture), [&nodeInfo](const auto& info) {
-					nodeInfo.ChainHeight = info.Height;
-					nodeInfo.ChainScore = info.Score;
+		thread::future<bool> CreateChainStatisticsFuture(thread::IoThreadPool& pool, ionet::PacketIo& io, NodeInfo& nodeInfo) {
+			return StartChainStatisticsFuture(pool, io, nodeInfo).then([&nodeInfo](auto&& chainStatisticsFuture) {
+				return UnwrapFutureAndSuppressErrors("querying chain statistics", std::move(chainStatisticsFuture), [&nodeInfo](
+						const auto& chainStatistics) {
+					nodeInfo.ChainHeight = chainStatistics.Height;
+					nodeInfo.FinalizedChainHeight = chainStatistics.FinalizedHeight;
+					nodeInfo.ChainScore = chainStatistics.Score;
 				});
 			});
 		}
@@ -101,20 +108,20 @@ namespace catapult { namespace tools { namespace health {
 
 		utils::LogLevel MapRelativeHeightToLogLevel(Height height, Height maxChainHeight) {
 			return Height() == height
-					? utils::LogLevel::Error
-					: maxChainHeight > height ? utils::LogLevel::Warning : utils::LogLevel::Info;
+					? utils::LogLevel::error
+					: maxChainHeight > height ? utils::LogLevel::warning : utils::LogLevel::info;
 		}
 
 		size_t GetLevelLeftPadding(utils::LogLevel level) {
 			// add left padding in order to align all level names with longest level name (warning)
 			switch (level) {
-			case utils::LogLevel::Error:
-			case utils::LogLevel::Debug:
-			case utils::LogLevel::Trace:
-			case utils::LogLevel::Fatal:
+			case utils::LogLevel::error:
+			case utils::LogLevel::debug:
+			case utils::LogLevel::trace:
+			case utils::LogLevel::fatal:
 				return 2;
 
-			case utils::LogLevel::Info:
+			case utils::LogLevel::info:
 				return 3;
 
 			default:
@@ -138,6 +145,7 @@ namespace catapult { namespace tools { namespace health {
 						<< std::string(GetLevelLeftPadding(level), ' ') << std::setw(static_cast<int>(maxNodeNameSize)) << pNodeInfo->Node
 						<< " [" << (HasFlag(ionet::NodeRoles::Api, pNodeInfo->Node.metadata().Roles) ? "API" : "P2P") << "]"
 						<< " at height " << std::setw(static_cast<int>(maxHeightSize)) << pNodeInfo->ChainHeight
+						<< " (" << pNodeInfo->FinalizedChainHeight << " finalized)"
 						<< " with score " << pNodeInfo->ChainScore;
 			}
 		}
@@ -192,7 +200,7 @@ namespace catapult { namespace tools { namespace health {
 					ionet::PacketIo& io,
 					NodeInfo& nodeInfo) override {
 				std::vector<thread::future<bool>> infoFutures;
-				infoFutures.emplace_back(CreateChainInfoFuture(pool, io, nodeInfo));
+				infoFutures.emplace_back(CreateChainStatisticsFuture(pool, io, nodeInfo));
 				infoFutures.emplace_back(CreateDiagnosticCountersFuture(io, nodeInfo));
 				return infoFutures;
 			}

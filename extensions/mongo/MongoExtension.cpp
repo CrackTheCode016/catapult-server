@@ -24,6 +24,7 @@
 #include "src/MongoBlockStorage.h"
 #include "src/MongoBulkWriter.h"
 #include "src/MongoChainScoreProvider.h"
+#include "src/MongoFinalizationStorage.h"
 #include "src/MongoPluginLoader.h"
 #include "src/MongoPluginManager.h"
 #include "src/MongoPtStorage.h"
@@ -91,12 +92,8 @@ namespace catapult { namespace mongo {
 			// create mongo writer
 			// keep the minimum high enough in order to avoid deadlock while waiting for mongo operations due to blocking io threads
 			auto numWriterThreads = std::max(4u, std::min(std::thread::hardware_concurrency(), dbConfig.MaxWriterThreads));
-			auto pBulkWriterPool = bootstrapper.pool().pushIsolatedPool("bulk writer", numWriterThreads);
-			auto pMongoBulkWriter = MongoBulkWriter::Create(
-					dbUri,
-					dbName,
-					// pass in a non-owning shared_ptr so that the writer does not keep the bulk writer pool alive during shutdown
-					std::shared_ptr<thread::IoThreadPool>(pBulkWriterPool.get(), [](const auto*) {}));
+			auto* pBulkWriterPool = bootstrapper.pool().pushIsolatedPool("bulk writer", numWriterThreads);
+			auto pMongoBulkWriter = MongoBulkWriter::Create(dbUri, dbName, *pBulkWriterPool);
 
 			// create transaction registry
 			const auto& config = bootstrapper.config();
@@ -128,13 +125,14 @@ namespace catapult { namespace mongo {
 			// register subscriptions
 			bootstrapper.subscriptionManager().addBlockChangeSubscriber(
 					io::CreateBlockStorageChangeSubscriber(std::move(pMongoBlockStorage)));
+			bootstrapper.subscriptionManager().addPtChangeSubscriber(CreateMongoPtStorage(*pMongoContext, *pTransactionRegistry));
 			bootstrapper.subscriptionManager().addUtChangeSubscriber(
 					CreateMongoTransactionStorage(*pMongoContext, *pTransactionRegistry, Ut_Collection_Name));
-			bootstrapper.subscriptionManager().addPtChangeSubscriber(CreateMongoPtStorage(*pMongoContext, *pTransactionRegistry));
-			bootstrapper.subscriptionManager().addTransactionStatusSubscriber(CreateMongoTransactionStatusStorage(*pMongoContext));
+			bootstrapper.subscriptionManager().addFinalizationSubscriber(CreateMongoFinalizationStorage(*pMongoContext));
 			bootstrapper.subscriptionManager().addStateChangeSubscriber(std::make_unique<ApiStateChangeSubscriber>(
 					std::move(pChainScoreProvider),
 					std::move(pExternalCacheStorage)));
+			bootstrapper.subscriptionManager().addTransactionStatusSubscriber(CreateMongoTransactionStatusStorage(*pMongoContext));
 		}
 	}
 }}

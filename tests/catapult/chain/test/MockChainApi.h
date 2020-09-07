@@ -34,7 +34,7 @@ namespace catapult { namespace mocks {
 	class MockChainApi : public api::RemoteChainApi {
 	public:
 		enum class EntryPoint {
-			Chain_Info,
+			Chain_Statistics,
 			Hashes_From,
 			Last_Block,
 			Block_At,
@@ -43,31 +43,17 @@ namespace catapult { namespace mocks {
 		};
 
 	public:
-		/// Creates a mock chain api around a chain \a score, a last block (\a pLastBlock) and a range of \a hashes.
-		MockChainApi(const model::ChainScore& score, std::shared_ptr<model::Block>&& pLastBlock, const model::HashRange& hashes)
+		/// Creates a mock chain api around a chain \a score and last block (\a pLastBlock).
+		MockChainApi(const model::ChainScore& score, std::shared_ptr<model::Block>&& pLastBlock)
 				: api::RemoteChainApi({ test::GenerateRandomByteArray<Key>(), "fake-host-from-mock-chain-api" })
 				, m_score(score)
 				, m_errorEntryPoint(EntryPoint::None)
-				, m_hashes(model::HashRange::CopyRange(hashes))
 				, m_numBlocksPerBlocksFromRequest({ 2 }) {
 			m_blocks.emplace(Height(0), std::move(pLastBlock));
 		}
 
-		/// Creates a mock chain api around a chain \a score, a chain \a height and a range of \a hashes.
-		MockChainApi(const model::ChainScore& score, Height height, const model::HashRange& hashes)
-				: MockChainApi(score, test::GenerateBlockWithTransactions(0, height), hashes)
-		{}
-
-		/// Creates a mock chain api around a chain \a score, a last block (\a pLastBlock) and the number of
-		/// hashes (\a numHashesToReturn) to return from a hashes-from request.
-		MockChainApi(const model::ChainScore& score, std::shared_ptr<model::Block>&& pLastBlock, size_t numHashesToReturn = 0)
-				: MockChainApi(score, std::move(pLastBlock), test::GenerateRandomHashes(numHashesToReturn))
-		{}
-
-		/// Creates a mock chain api around a chain \a score, a chain \a height and the number of
-		/// hashes (\a numHashesToReturn) to return from a hashes-from request.
-		MockChainApi(const model::ChainScore& score, Height height, size_t numHashesToReturn = 0)
-				: MockChainApi(score, test::GenerateBlockWithTransactions(0, height), numHashesToReturn)
+		/// Creates a mock chain api around a chain \a score and chain \a height.
+		MockChainApi(const model::ChainScore& score, Height height) : MockChainApi(score, test::GenerateBlockWithTransactions(0, height))
 		{}
 
 	public:
@@ -102,6 +88,11 @@ namespace catapult { namespace mocks {
 			return m_blocksFromRequests;
 		}
 
+		/// Sets the result of hashesFrom at \a height to \a hashes.
+		void setHashes(Height height, const model::HashRange& hashes) {
+			m_hashes[height] = model::HashRange::CopyRange(hashes);
+		}
+
 		/// Sets the number of blocks (\a numBlocksPerBlocksFromRequest) to return for multiple blocks-from requests.
 		/// \note The last value will be repeated indefinitely.
 		void setNumBlocksPerBlocksFromRequest(const std::vector<uint32_t>& numBlocksPerBlocksFromRequest) {
@@ -113,15 +104,15 @@ namespace catapult { namespace mocks {
 		}
 
 	public:
-		/// Gets the configured chain info and throws if the error entry point is set to Chain_Info.
-		thread::future<api::ChainInfo> chainInfo() const override {
-			if (shouldRaiseException(EntryPoint::Chain_Info))
-				return CreateFutureException<api::ChainInfo>("chain info error has been set");
+		/// Gets the configured chain statistics and throws if the error entry point is set to Chain_Statistics.
+		thread::future<api::ChainStatistics> chainStatistics() const override {
+			if (shouldRaiseException(EntryPoint::Chain_Statistics))
+				return CreateFutureException<api::ChainStatistics>("chain statistics error has been set");
 
-			auto info = api::ChainInfo();
-			info.Height = chainHeight();
-			info.Score = m_score;
-			return CreateFutureResponse(std::move(info));
+			auto chainStatistics = api::ChainStatistics();
+			chainStatistics.Height = chainHeight();
+			chainStatistics.Score = m_score;
+			return CreateFutureResponse(std::move(chainStatistics));
 		}
 
 		/// Gets the configured hashes from \a height and throws if the error entry point is set to Hashes_From.
@@ -131,7 +122,13 @@ namespace catapult { namespace mocks {
 			if (shouldRaiseException(EntryPoint::Hashes_From))
 				return CreateFutureException<model::HashRange>("hashes from error has been set");
 
-			return CreateFutureResponse(model::HashRange::CopyRange(m_hashes));
+			auto iter = m_hashes.find(height);
+			if (m_hashes.cend() == iter) {
+				CATAPULT_LOG(warning) << "hashesFrom failed at height " << height;
+				return CreateFutureException<model::HashRange>("could not find hashes for height");
+			}
+
+			return CreateFutureResponse(model::HashRange::CopyRange(iter->second));
 		}
 
 		/// Gets the configured last block and throws if the error entry point is set to Last_Block.
@@ -213,7 +210,7 @@ namespace catapult { namespace mocks {
 	private:
 		model::ChainScore m_score;
 		EntryPoint m_errorEntryPoint;
-		model::HashRange m_hashes;
+		std::map<Height, model::HashRange> m_hashes;
 		std::map<Height, std::shared_ptr<model::Block>> m_blocks;
 
 		mutable std::vector<Height> m_blockAtRequests;

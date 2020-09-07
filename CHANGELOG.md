@@ -3,6 +3,60 @@ All notable changes to this project will be documented in this file.
 
 The changelog format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.9.6.4] - 27-Jul-2020
+
+### Fixed:
+ - bugfix: credit main account not remote when hash lock expires
+ - bugfix, Trail-of-Bits: UB in container access
+ - bugfix, Trail-of-Bits: missing `O_CLOEXEC` flag
+ - bugfix: high value addresses tracking
+
+### Changed:
+ - 
+ - allow nemesis block to contain balance transfers from non-nemesis account
+ - nemgen enhancements to support public network
+
+## [0.9.6.3] - 10-Jul-2020
+
+### Fixed:
+ - bugfix: mosaics inside Balances not correctly ordered after removing optimizedId in 0.9.6.2
+
+## [0.9.6.2] - 23-Jun-2020
+
+### Added
+ - One-time signatures tree
+ 
+### Changed
+ - voting key link transaction requires finalization points
+ - allow `maxVotingKeysPerAccount` voting key links
+ - track voter-eligible accounts
+ - state entries indexed by address
+ - change the way pruning works (move to BlockChainSyncConsumer)
+ - minor: add VerifiableEntity::Size to database
+ - minor: binary address format has 24-bytes
+
+### Fixed:
+ - nodes cannot update identity keys in host-identity network
+ - recovery crash in reapplyBlocks caused by inconsistent BlockStatisticCache contents
+
+## [0.9.5.1] - 22-May-2020
+
+### Added
+ - major: VRF support, harvesters need to register VRF key that is used to generate VRF proof for given block
+ - harvest network fees
+
+### Changed
+ - unlock message behavior: message must specify vrf key, account must be linked to a node via NodeKeyLink
+ - renamed AccountLinkTransaction to AccountKeyLinkTransaction (consistency)
+
+### Fixed:
+ - bugfix: issue #68, delay ChainedSocketReader in PacketReaders
+ - bugfix: issue #69, mosaic divisibility validation
+ - more minor fixes
+
+### Removed
+ - eventsource extension
+
 ## [0.9.4.1] - 23-April-2020
 
 ### Added
@@ -224,6 +278,11 @@ The changelog format is based on [Keep a Changelog](https://keepachangelog.com/e
 ### Added
 - Initial code release.
 
+[0.9.6.4]: https://github.com/nemtech/catapult-server/compare/v0.9.6.3...v0.9.6.4
+[0.9.6.3]: https://github.com/nemtech/catapult-server/compare/v0.9.6.2...v0.9.6.3
+[0.9.6.2]: https://github.com/nemtech/catapult-server/compare/v0.9.5.1...v0.9.6.2
+[0.9.5.1]: https://github.com/nemtech/catapult-server/compare/v0.9.4.1...v0.9.5.1
+[0.9.4.1]: https://github.com/nemtech/catapult-server/compare/v0.9.3.2...v0.9.4.1
 [0.9.3.2]: https://github.com/nemtech/catapult-server/compare/v0.9.3.1...v0.9.3.2
 [0.9.3.1]: https://github.com/nemtech/catapult-server/compare/v0.9.2.1...v0.9.3.1
 [0.9.2.1]: https://github.com/nemtech/catapult-server/compare/v0.9.1.1...v0.9.2.1

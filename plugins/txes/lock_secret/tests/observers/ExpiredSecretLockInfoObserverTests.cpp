@@ -20,6 +20,7 @@
 
 #include "src/observers/Observers.h"
 #include "src/model/SecretLockReceiptType.h"
+#include "catapult/model/Address.h"
 #include "plugins/txes/lock_shared/tests/observers/ExpiredLockInfoObserverTests.h"
 #include "tests/test/SecretLockInfoCacheTestUtils.h"
 
@@ -48,29 +49,44 @@ namespace catapult { namespace observers {
 
 		using ObserverTests = ExpiredLockInfoObserverTests<ExpiredSecretLockInfoTraits>;
 		using SeedTuple = ObserverTests::SeedTuple;
+
+		constexpr auto Harvester_Type = ObserverTests::HarvesterType::Main;
 	}
 
 	// region no operation
 
+	namespace {
+		// these tests don't stricly require public key instead of address because harvester type is always Main
+		// and public key is only required when harvester type is Remote
+
+		Address ToAddress(const Key& publicKey) {
+			return model::PublicKeyToAddress(publicKey, model::NetworkIdentifier::Zero);
+		}
+	}
+
 	TEST(TEST_CLASS, ObserverDoesNothingWhenNoLockInfoExpires_Commit) {
 		// Arrange:
-		auto blockSigner = test::GenerateRandomByteArray<Key>();
+		auto blockHarvesterPublicKey = test::GenerateRandomByteArray<Key>();
+		auto blockHarvester = ToAddress(blockHarvesterPublicKey);
+
 		std::vector<SeedTuple> expiringSeeds;
 
 		// Act + Assert:
-		ObserverTests::RunBalanceTest(NotifyMode::Commit, blockSigner, expiringSeeds, {
-			{ blockSigner, MosaicId(500), Amount(200), Amount() }
+		ObserverTests::RunBalanceTest(NotifyMode::Commit, Harvester_Type, blockHarvesterPublicKey, expiringSeeds, {
+			{ blockHarvester, MosaicId(500), Amount(200), Amount() }
 		});
 	}
 
 	TEST(TEST_CLASS, ObserverDoesNothingWhenNoLockInfoExpires_Rollback) {
 		// Arrange:
-		auto blockSigner = test::GenerateRandomByteArray<Key>();
+		auto blockHarvesterPublicKey = test::GenerateRandomByteArray<Key>();
+		auto blockHarvester = ToAddress(blockHarvesterPublicKey);
+
 		std::vector<SeedTuple> expiringSeeds;
 
 		// Act + Assert:
-		ObserverTests::RunBalanceTest(NotifyMode::Rollback, blockSigner, expiringSeeds, {
-			{ blockSigner, MosaicId(500), Amount(200), Amount() }
+		ObserverTests::RunBalanceTest(NotifyMode::Rollback, Harvester_Type, blockHarvesterPublicKey, expiringSeeds, {
+			{ blockHarvester, MosaicId(500), Amount(200), Amount() }
 		});
 	}
 
@@ -80,31 +96,35 @@ namespace catapult { namespace observers {
 
 	TEST(TEST_CLASS, ObserverCreditsAccountsOnCommit_Single) {
 		// Arrange:
-		auto blockSigner = test::GenerateRandomByteArray<Key>();
-		auto key = test::GenerateRandomByteArray<Key>();
+		auto blockHarvesterPublicKey = test::GenerateRandomByteArray<Key>();
+		auto blockHarvester = ToAddress(blockHarvesterPublicKey);
+
+		auto address = test::GenerateRandomByteArray<Address>();
 		std::vector<SeedTuple> expiringSeeds{
-			{ key, MosaicId(111), Amount(333), Amount(33) }
+			{ address, MosaicId(111), Amount(333), Amount(33) }
 		};
 
 		// Act + Assert:
-		ObserverTests::RunBalanceTest(NotifyMode::Commit, blockSigner, expiringSeeds, {
-			{ key, MosaicId(111), Amount(333 + 33), Amount() },
-			{ blockSigner, MosaicId(500), Amount(200), Amount() }
+		ObserverTests::RunBalanceTest(NotifyMode::Commit, Harvester_Type, blockHarvesterPublicKey, expiringSeeds, {
+			{ address, MosaicId(111), Amount(333 + 33), Amount() },
+			{ blockHarvester, MosaicId(500), Amount(200), Amount() }
 		});
 	}
 
 	TEST(TEST_CLASS, ObserverCreditsAccountsOnRollback_Single) {
 		// Arrange:
-		auto blockSigner = test::GenerateRandomByteArray<Key>();
-		auto key = test::GenerateRandomByteArray<Key>();
+		auto blockHarvesterPublicKey = test::GenerateRandomByteArray<Key>();
+		auto blockHarvester = ToAddress(blockHarvesterPublicKey);
+
+		auto address = test::GenerateRandomByteArray<Address>();
 		std::vector<SeedTuple> expiringSeeds{
-			{ key, MosaicId(111), Amount(333), Amount(33) }
+			{ address, MosaicId(111), Amount(333), Amount(33) }
 		};
 
 		// Act + Assert:
-		ObserverTests::RunBalanceTest(NotifyMode::Rollback, blockSigner, expiringSeeds, {
-			{ key, MosaicId(111), Amount(333 - 33), Amount() },
-			{ blockSigner, MosaicId(500), Amount(200), Amount() }
+		ObserverTests::RunBalanceTest(NotifyMode::Rollback, Harvester_Type, blockHarvesterPublicKey, expiringSeeds, {
+			{ address, MosaicId(111), Amount(333 - 33), Amount() },
+			{ blockHarvester, MosaicId(500), Amount(200), Amount() }
 		});
 	}
 
@@ -114,41 +134,45 @@ namespace catapult { namespace observers {
 
 	TEST(TEST_CLASS, ObserverCreditsAccountsOnCommit_Multiple) {
 		// Arrange:
-		auto blockSigner = test::GenerateRandomByteArray<Key>();
-		auto keys = test::GenerateRandomDataVector<Key>(3);
+		auto blockHarvesterPublicKey = test::GenerateRandomByteArray<Key>();
+		auto blockHarvester = ToAddress(blockHarvesterPublicKey);
+
+		auto addresses = test::GenerateRandomDataVector<Address>(3);
 		std::vector<SeedTuple> expiringSeeds{
-			{ keys[0], MosaicId(111), Amount(333), Amount(33) },
-			{ keys[1], MosaicId(222), Amount(222), Amount(88) },
-			{ keys[2], MosaicId(111), Amount(444), Amount(44) },
-			{ keys[1], MosaicId(222), Amount(), Amount(22) }
+			{ addresses[0], MosaicId(111), Amount(333), Amount(33) },
+			{ addresses[1], MosaicId(222), Amount(222), Amount(88) },
+			{ addresses[2], MosaicId(111), Amount(444), Amount(44) },
+			{ addresses[1], MosaicId(222), Amount(), Amount(22) }
 		};
 
 		// Act + Assert:
-		ObserverTests::RunBalanceTest(NotifyMode::Commit, blockSigner, expiringSeeds, {
-			{ keys[0], MosaicId(111), Amount(333 + 33), Amount() },
-			{ keys[1], MosaicId(222), Amount(222 + 88 + 22), Amount() },
-			{ keys[2], MosaicId(111), Amount(444 + 44), Amount() },
-			{ blockSigner, MosaicId(500), Amount(200), Amount() }
+		ObserverTests::RunBalanceTest(NotifyMode::Commit, Harvester_Type, blockHarvesterPublicKey, expiringSeeds, {
+			{ addresses[0], MosaicId(111), Amount(333 + 33), Amount() },
+			{ addresses[1], MosaicId(222), Amount(222 + 88 + 22), Amount() },
+			{ addresses[2], MosaicId(111), Amount(444 + 44), Amount() },
+			{ blockHarvester, MosaicId(500), Amount(200), Amount() }
 		});
 	}
 
 	TEST(TEST_CLASS, ObserverCreditsAccountsOnRollback_Multiple) {
 		// Arrange:
-		auto blockSigner = test::GenerateRandomByteArray<Key>();
-		auto keys = test::GenerateRandomDataVector<Key>(3);
+		auto blockHarvesterPublicKey = test::GenerateRandomByteArray<Key>();
+		auto blockHarvester = ToAddress(blockHarvesterPublicKey);
+
+		auto addresses = test::GenerateRandomDataVector<Address>(3);
 		std::vector<SeedTuple> expiringSeeds{
-			{ keys[0], MosaicId(111), Amount(333), Amount(33) },
-			{ keys[1], MosaicId(222), Amount(222), Amount(88) },
-			{ keys[2], MosaicId(111), Amount(444), Amount(44) },
-			{ keys[1], MosaicId(222), Amount(), Amount(22) }
+			{ addresses[0], MosaicId(111), Amount(333), Amount(33) },
+			{ addresses[1], MosaicId(222), Amount(222), Amount(88) },
+			{ addresses[2], MosaicId(111), Amount(444), Amount(44) },
+			{ addresses[1], MosaicId(222), Amount(), Amount(22) }
 		};
 
 		// Act + Assert:
-		ObserverTests::RunBalanceTest(NotifyMode::Rollback, blockSigner, expiringSeeds, {
-			{ keys[0], MosaicId(111), Amount(333 - 33), Amount() },
-			{ keys[1], MosaicId(222), Amount(222 - 88 - 22), Amount() },
-			{ keys[2], MosaicId(111), Amount(444 - 44), Amount() },
-			{ blockSigner, MosaicId(500), Amount(200), Amount() }
+		ObserverTests::RunBalanceTest(NotifyMode::Rollback, Harvester_Type, blockHarvesterPublicKey, expiringSeeds, {
+			{ addresses[0], MosaicId(111), Amount(333 - 33), Amount() },
+			{ addresses[1], MosaicId(222), Amount(222 - 88 - 22), Amount() },
+			{ addresses[2], MosaicId(111), Amount(444 - 44), Amount() },
+			{ blockHarvester, MosaicId(500), Amount(200), Amount() }
 		});
 	}
 
@@ -158,35 +182,37 @@ namespace catapult { namespace observers {
 
 	TEST(TEST_CLASS, ObserverCreatesReceiptsOnCommit) {
 		// Arrange:
-		auto blockSigner = test::GenerateRandomByteArray<Key>();
+		auto blockHarvesterPublicKey = test::GenerateRandomByteArray<Key>();
+
 		std::vector<SeedTuple> expiringSeeds{
-			{ Key{ { 9 } }, MosaicId(111), Amount(333), Amount(33) },
-			{ Key{ { 4 } }, MosaicId(222), Amount(222), Amount(88) },
-			{ Key{ { 4 } }, MosaicId(111), Amount(444), Amount(33) },
-			{ Key{ { 9 } }, MosaicId(222), Amount(), Amount(22) }
+			{ Address{ { 9 } }, MosaicId(111), Amount(333), Amount(33) },
+			{ Address{ { 4 } }, MosaicId(222), Amount(222), Amount(88) },
+			{ Address{ { 4 } }, MosaicId(111), Amount(444), Amount(33) },
+			{ Address{ { 9 } }, MosaicId(222), Amount(), Amount(22) }
 		};
 
 		// Act + Assert: notice that receipts are deterministically ordered
-		ObserverTests::RunReceiptTest(NotifyMode::Commit, blockSigner, expiringSeeds, {
-			{ Key{ { 4 } }, MosaicId(111), Amount(), Amount(33) },
-			{ Key{ { 9 } }, MosaicId(111), Amount(), Amount(33) },
-			{ Key{ { 9 } }, MosaicId(222), Amount(), Amount(22) },
-			{ Key{ { 4 } }, MosaicId(222), Amount(), Amount(88) }
+		ObserverTests::RunReceiptTest(NotifyMode::Commit, Harvester_Type, blockHarvesterPublicKey, expiringSeeds, {
+			{ Address{ { 4 } }, MosaicId(111), Amount(), Amount(33) },
+			{ Address{ { 9 } }, MosaicId(111), Amount(), Amount(33) },
+			{ Address{ { 9 } }, MosaicId(222), Amount(), Amount(22) },
+			{ Address{ { 4 } }, MosaicId(222), Amount(), Amount(88) }
 		});
 	}
 
 	TEST(TEST_CLASS, ObserverDoesNotCreateReceiptsOnRollback) {
 		// Arrange:
-		auto blockSigner = test::GenerateRandomByteArray<Key>();
+		auto blockHarvesterPublicKey = test::GenerateRandomByteArray<Key>();
+
 		std::vector<SeedTuple> expiringSeeds{
-			{ Key{ { 9 } }, MosaicId(111), Amount(333), Amount(33) },
-			{ Key{ { 1 } }, MosaicId(222), Amount(222), Amount(88) },
-			{ Key{ { 4 } }, MosaicId(111), Amount(444), Amount(44) },
-			{ Key{ { 1 } }, MosaicId(222), Amount(), Amount(22) }
+			{ Address{ { 9 } }, MosaicId(111), Amount(333), Amount(33) },
+			{ Address{ { 1 } }, MosaicId(222), Amount(222), Amount(88) },
+			{ Address{ { 4 } }, MosaicId(111), Amount(444), Amount(44) },
+			{ Address{ { 1 } }, MosaicId(222), Amount(), Amount(22) }
 		};
 
 		// Act + Assert:
-		ObserverTests::RunReceiptTest(NotifyMode::Rollback, blockSigner, expiringSeeds, {});
+		ObserverTests::RunReceiptTest(NotifyMode::Rollback, Harvester_Type, blockHarvesterPublicKey, expiringSeeds, {});
 	}
 
 	// endregion

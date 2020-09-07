@@ -29,7 +29,7 @@ namespace catapult { namespace validators {
 	DEFINE_STATELESS_VALIDATOR(StrictAggregateCosignatures, [](const Notification& notification) {
 		// collect all cosignatories (initially set used flag to false)
 		utils::ArrayPointerFlagMap<Key> cosignatories;
-		cosignatories.emplace(&notification.Signer, false);
+		cosignatories.emplace(&notification.SignerPublicKey, false);
 		const auto* pCosignature = notification.CosignaturesPtr;
 		for (auto i = 0u; i < notification.CosignaturesCount; ++i) {
 			cosignatories.emplace(&pCosignature->SignerPublicKey, false);
@@ -54,5 +54,5 @@ namespace catapult { namespace validators {
 		return std::all_of(cosignatories.cbegin(), cosignatories.cend(), [](const auto& pair) { return pair.second; })
 				? hasMissingCosignatures ? Failure_Aggregate_Missing_Cosignatures : ValidationResult::Success
 				: Failure_Aggregate_Ineligible_Cosignatories;
-	});
+	})
 }}

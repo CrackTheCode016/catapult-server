@@ -26,11 +26,11 @@
 namespace catapult { namespace observers {
 
 	namespace {
-		void UpdateBeneficiaryActivity(const Key& publicKey, ObserverContext& context) {
+		void UpdateBeneficiaryActivity(const Address& address, ObserverContext& context) {
 			auto& cache = context.Cache.sub<cache::AccountStateCache>();
-			cache::ProcessForwardedAccountState(cache, publicKey, [&context](auto& accountState) {
+			cache::ProcessForwardedAccountState(cache, address, [&context](auto& accountState) {
 				importance::UpdateActivity(
-					accountState.PublicKey,
+					accountState.Address,
 					context,
 					[](auto& bucket) { ++bucket.BeneficiaryCount; },
 					[](auto& bucket) { --bucket.BeneficiaryCount; });
@@ -40,5 +40,5 @@ namespace catapult { namespace observers {
 
 	DEFINE_OBSERVER(Beneficiary, model::BlockNotification, ([](const model::BlockNotification& notification, ObserverContext& context) {
 		UpdateBeneficiaryActivity(notification.Beneficiary, context);
-	}));
+	}))
 }}

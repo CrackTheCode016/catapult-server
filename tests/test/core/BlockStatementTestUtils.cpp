@@ -48,25 +48,24 @@ namespace catapult { namespace test {
 		template<typename TResolutionStatement>
 		void RandomFillStatement(TResolutionStatement& statement, size_t numResolutions) {
 			for (auto i = 0u; i < numResolutions; ++i) {
-				typename TResolutionStatement::ResolutionEntry entry;
-				test::FillWithRandomData({ reinterpret_cast<uint8_t*>(&entry), sizeof(typename TResolutionStatement::ResolutionEntry) });
+				auto entry = test::GenerateRandomPackedStruct<typename TResolutionStatement::ResolutionEntry>();
 				entry.Source.PrimaryId = i + 1; // needs to be in ascending order
 				statement.addResolution(entry.ResolvedValue, entry.Source);
 			}
 		}
 
-		template<typename TKey, typename TStatement>
+		template<typename TStatementKey, typename TStatementValue>
 		void GenerateRandomStatements(
-				std::map<TKey, TStatement>& statements,
+				std::map<TStatementKey, TStatementValue>& statements,
 				size_t numStatements,
 				RandomStatementsConstraints constraints) {
 			for (auto i = 0u; i < numStatements; ++i) {
-				TKey key;
-				test::FillWithRandomData({ reinterpret_cast<uint8_t*>(&key), sizeof(TKey) });
+				TStatementKey key;
+				test::FillWithRandomData({ reinterpret_cast<uint8_t*>(&key), sizeof(TStatementKey) });
 				if (RandomStatementsConstraints::Order == constraints)
 					SetSourcePrimaryId(key, 2 * i + 1);
 
-				TStatement statement(key);
+				TStatementValue statement(key);
 				RandomFillStatement(statement, numStatements * 2);
 				statements.emplace(key, std::move(statement));
 			}

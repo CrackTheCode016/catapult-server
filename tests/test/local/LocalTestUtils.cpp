@@ -50,7 +50,8 @@ namespace catapult { namespace test {
 
 			config.EnableAddressReuse = true;
 
-			config.MaxBlocksPerSyncAttempt = 4 * 100;
+			config.MaxHashesPerSyncAttempt = 4 * 100;
+			config.MaxBlocksPerSyncAttempt = 2 * 100;
 			config.MaxChainBytesPerSyncAttempt = utils::FileSize::FromKilobytes(8 * 512);
 
 			config.ShortLivedCacheMaxSize = 10;
@@ -68,8 +69,6 @@ namespace catapult { namespace test {
 
 			config.MaxCacheDatabaseWriteBatchSize = utils::FileSize::FromMegabytes(5);
 			config.MaxTrackedNodes = 5'000;
-
-			config.BatchVerificationRandomSource = "/dev/urandom";
 
 			config.Local.Host = "127.0.0.1";
 			config.Local.FriendlyName = "LOCAL";
@@ -89,7 +88,7 @@ namespace catapult { namespace test {
 
 		void SetNetwork(model::NetworkInfo& network) {
 			network.Identifier = model::NetworkIdentifier::Mijin_Test;
-			network.PublicKey = crypto::KeyPair::FromString(Mijin_Test_Nemesis_Private_Key).publicKey();
+			network.NemesisSignerPublicKey = crypto::KeyPair::FromString(Mijin_Test_Nemesis_Private_Key).publicKey();
 			network.GenerationHashSeed = GetNemesisGenerationHashSeed();
 			network.EpochAdjustment = Default_Network_Epoch_Adjustment;
 		}
@@ -121,6 +120,8 @@ namespace catapult { namespace test {
 		config.TotalChainImportance = Importance(17'000);
 		config.MinHarvesterBalance = Amount(500'000);
 		config.MaxHarvesterBalance = config.InitialCurrencyAtomicUnits;
+
+		config.VotingSetGrouping = 1;
 
 		config.BlockPruneInterval = 360;
 		config.MaxTransactionsPerBlock = 200'000;

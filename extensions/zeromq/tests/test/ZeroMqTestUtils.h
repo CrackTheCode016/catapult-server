@@ -74,6 +74,9 @@ namespace catapult { namespace test {
 	/// Asserts that the given \a message is equivalent to a drop blocks message with \a height.
 	void AssertDropBlocksMessage(const zmq::multipart_t& message, Height height);
 
+	/// Asserts that the given \a message is equivalent to a finalized block message with \a height, \a hash and \a point.
+	void AssertFinalizedBlockMessage(const zmq::multipart_t& message, Height height, const Hash256& hash, FinalizationPoint point);
+
 	/// Asserts that the given \a message has \a topic as first part and matches the data in \a transactionElement and \a height.
 	void AssertTransactionElementMessage(
 			const zmq::multipart_t& message,
@@ -164,7 +167,7 @@ namespace catapult { namespace test {
 		void waitForReceiveSuccess() {
 			constexpr uint8_t Max_Attempts = 20;
 			auto marker = zeromq::BlockMarker::Drop_Blocks_Marker;
-			m_zmqSocket.setsockopt(ZMQ_SUBSCRIBE, &marker, sizeof(marker));
+			m_zmqSocket.setsockopt(ZMQ_SUBSCRIBE, &marker, sizeof(zeromq::BlockMarker));
 			auto receiveSuccess = false;
 			auto counter = 0u;
 			zmq::multipart_t message;
@@ -195,7 +198,7 @@ namespace catapult { namespace test {
 
 	private:
 		static unsigned short GetDefaultLocalHostZmqPort() {
-			return GetLocalHostPort() + 2;
+			return static_cast<unsigned short>(GetLocalHostPort() + 2);
 		}
 
 	private:

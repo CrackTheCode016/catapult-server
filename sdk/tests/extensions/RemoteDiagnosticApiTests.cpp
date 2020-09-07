@@ -34,7 +34,7 @@ namespace catapult { namespace extensions {
 			using ResponseType = state::TimestampedHashRange;
 
 			static constexpr auto Packet_Type = ionet::PacketType::Confirm_Timestamped_Hashes;
-			static constexpr auto Request_Entity_Size = sizeof(state::TimestampedHash);
+			static constexpr auto Request_Entity_Size = SizeOf32<state::TimestampedHash>();
 			static constexpr auto Response_Entity_Size = Request_Entity_Size;
 
 			static auto CreateResponsePacket(uint32_t numTimestampedHashes) {
@@ -42,7 +42,7 @@ namespace catapult { namespace extensions {
 				auto pPacket = ionet::CreateSharedPacket<ionet::Packet>(payloadSize);
 				test::FillWithRandomData({ pPacket->Data(), payloadSize });
 
-				auto pData = pPacket->Data();
+				auto* pData = pPacket->Data();
 				for (auto i = 0u; i < numTimestampedHashes; ++i, pData += Response_Entity_Size) {
 					auto& timestampedHash = reinterpret_cast<state::TimestampedHash&>(*pData);
 					timestampedHash.Time = Timestamp(5 * i);
@@ -229,10 +229,10 @@ namespace catapult { namespace extensions {
 				EXPECT_TRUE(ionet::IsPacketValid(packet, Packet_Type));
 			}
 
-			static void ValidateResponse(const ionet::Packet&, const model::EntityRange<Key>& unlockedAccountKeys) {
-				ASSERT_EQ(static_cast<uint32_t>(Num_Unlocked_Accounts), unlockedAccountKeys.size());
+			static void ValidateResponse(const ionet::Packet&, const model::EntityRange<Key>& unlockedAccountPublicKeys) {
+				ASSERT_EQ(static_cast<uint32_t>(Num_Unlocked_Accounts), unlockedAccountPublicKeys.size());
 
-				auto iter = unlockedAccountKeys.cbegin();
+				auto iter = unlockedAccountPublicKeys.cbegin();
 				AssertKey(0x11, *iter);
 
 				++iter;
@@ -257,8 +257,8 @@ namespace catapult { namespace extensions {
 			using ResponseType = model::EntityRange<EntityType>;
 
 			static constexpr auto Packet_Type = PacketType;
-			static constexpr auto Response_Entity_Data_Size = 10u;
-			static constexpr auto Response_Entity_Size = sizeof(EntityType) + Response_Entity_Data_Size;
+			static constexpr auto Response_Entity_Data_Size = static_cast<uint32_t>(10);
+			static constexpr auto Response_Entity_Size = SizeOf32<EntityType>() + Response_Entity_Data_Size;
 
 		public:
 			static auto CreateResponsePacket(uint32_t numInfos) {
@@ -266,7 +266,7 @@ namespace catapult { namespace extensions {
 				auto pPacket = ionet::CreateSharedPacket<ionet::Packet>(payloadSize);
 				test::FillWithRandomData({ pPacket->Data(), payloadSize });
 
-				auto pData = pPacket->Data();
+				auto* pData = pPacket->Data();
 				for (auto i = 0u; i < numInfos; ++i, pData += Response_Entity_Size) {
 					auto& info = reinterpret_cast<EntityType&>(*pData);
 					info.Size = Response_Entity_Size;

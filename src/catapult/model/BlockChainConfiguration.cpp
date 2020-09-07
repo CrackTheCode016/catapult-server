@@ -19,8 +19,11 @@
 **/
 
 #include "BlockChainConfiguration.h"
+#include "Address.h"
 #include "catapult/utils/ConfigurationBag.h"
 #include "catapult/utils/ConfigurationUtils.h"
+
+DEFINE_ADDRESS_CONFIGURATION_VALUE_SUPPORT
 
 namespace catapult { namespace model {
 
@@ -44,7 +47,7 @@ namespace catapult { namespace model {
 
 		LOAD_NETWORK_PROPERTY(Identifier);
 		LOAD_NETWORK_PROPERTY(NodeEqualityStrategy);
-		LOAD_NETWORK_PROPERTY(PublicKey);
+		LOAD_NETWORK_PROPERTY(NemesisSignerPublicKey);
 		LOAD_NETWORK_PROPERTY(GenerationHashSeed);
 		LOAD_NETWORK_PROPERTY(EpochAdjustment);
 
@@ -60,7 +63,6 @@ namespace catapult { namespace model {
 
 		LOAD_CHAIN_PROPERTY(BlockGenerationTargetTime);
 		LOAD_CHAIN_PROPERTY(BlockTimeSmoothingFactor);
-		LOAD_CHAIN_PROPERTY(BlockFinalizationInterval);
 
 		LOAD_CHAIN_PROPERTY(ImportanceGrouping);
 		LOAD_CHAIN_PROPERTY(ImportanceActivityPercentage);
@@ -79,9 +81,14 @@ namespace catapult { namespace model {
 		LOAD_CHAIN_PROPERTY(MaxHarvesterBalance);
 		LOAD_CHAIN_PROPERTY(MinVoterBalance);
 
+		LOAD_CHAIN_PROPERTY(VotingSetGrouping);
+		LOAD_CHAIN_PROPERTY(MaxVotingKeysPerAccount);
+		LOAD_CHAIN_PROPERTY(MinVotingKeyLifetime);
+		LOAD_CHAIN_PROPERTY(MaxVotingKeyLifetime);
+
 		LOAD_CHAIN_PROPERTY(HarvestBeneficiaryPercentage);
 		LOAD_CHAIN_PROPERTY(HarvestNetworkPercentage);
-		LOAD_CHAIN_PROPERTY(HarvestNetworkFeeSinkPublicKey);
+		LOAD_CHAIN_PROPERTY(HarvestNetworkFeeSinkAddress);
 
 		LOAD_CHAIN_PROPERTY(BlockPruneInterval);
 		LOAD_CHAIN_PROPERTY(MaxTransactionsPerBlock);
@@ -103,7 +110,7 @@ namespace catapult { namespace model {
 			numPluginProperties += iter->second.size();
 		}
 
-		utils::VerifyBagSizeLte(bag, 5 + 25 + numPluginProperties);
+		utils::VerifyBagSizeExact(bag, 5 + 28 + numPluginProperties);
 		return config;
 	}
 

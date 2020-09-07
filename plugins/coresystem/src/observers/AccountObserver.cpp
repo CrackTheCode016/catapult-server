@@ -30,8 +30,8 @@ namespace catapult { namespace observers {
 			{}
 
 		public:
-			void visit(const UnresolvedAddress& address) {
-				notify(m_context.Resolvers.resolve(address));
+			void visit(const model::ResolvableAddress& address) {
+				notify(address.resolved(m_context.Resolvers));
 			}
 
 			void visit(const Key& publicKey) {
@@ -39,13 +39,13 @@ namespace catapult { namespace observers {
 			}
 
 		private:
-			template<typename AccountId>
-			void notify(const AccountId& accountId) {
+			template<typename TAccountIdentifier>
+			void notify(const TAccountIdentifier& accountIdentifier) {
 				auto& accountStateCache = m_context.Cache.sub<cache::AccountStateCache>();
 				if (NotifyMode::Commit == m_context.Mode)
-					accountStateCache.addAccount(accountId, m_context.Height);
+					accountStateCache.addAccount(accountIdentifier, m_context.Height);
 				else
-					accountStateCache.queueRemove(accountId, m_context.Height);
+					accountStateCache.queueRemove(accountIdentifier, m_context.Height);
 			}
 
 		private:
@@ -58,12 +58,12 @@ namespace catapult { namespace observers {
 			const ObserverContext& context) {
 		AccountStateCacheVisitor visitor(context);
 		visitor.visit(notification.Address);
-	});
+	})
 
 	DEFINE_OBSERVER(AccountPublicKey, model::AccountPublicKeyNotification, [](
 			const model::AccountPublicKeyNotification& notification,
 			const ObserverContext& context) {
 		AccountStateCacheVisitor visitor(context);
 		visitor.visit(notification.PublicKey);
-	});
+	})
 }}

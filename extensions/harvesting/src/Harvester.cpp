@@ -57,11 +57,13 @@ namespace catapult { namespace harvesting {
 				const NextBlockContext& context,
 				model::NetworkIdentifier networkIdentifier,
 				const Key& signer,
-				const Key& beneficiary) {
+				const Address& beneficiary) {
 			auto pBlock = model::CreateBlock(context.ParentContext, networkIdentifier, signer, {});
 			pBlock->Difficulty = context.Difficulty;
 			pBlock->Timestamp = context.Timestamp;
-			pBlock->BeneficiaryPublicKey = Key() == beneficiary ? signer : beneficiary;
+			if (Address() != beneficiary)
+				pBlock->BeneficiaryAddress = beneficiary;
+
 			return pBlock;
 		}
 
@@ -73,7 +75,7 @@ namespace catapult { namespace harvesting {
 	Harvester::Harvester(
 			const cache::CatapultCache& cache,
 			const model::BlockChainConfiguration& config,
-			const Key& beneficiary,
+			const Address& beneficiary,
 			const UnlockedAccounts& unlockedAccounts,
 			const BlockGenerator& blockGenerator)
 			: m_cache(cache)
@@ -123,7 +125,7 @@ namespace catapult { namespace harvesting {
 		if (!pHarvesterKeyPair)
 			return nullptr;
 
-		utils::StackLogger stackLogger("generating candidate block", utils::LogLevel::Debug);
+		utils::StackLogger stackLogger("generating candidate block", utils::LogLevel::debug);
 		auto networkIdentifier = m_config.Network.Identifier;
 		auto pBlockHeader = CreateUnsignedBlockHeader(context, networkIdentifier, pHarvesterKeyPair->publicKey(), m_beneficiary);
 		AddGenerationHashProof(*pBlockHeader, vrfProof);

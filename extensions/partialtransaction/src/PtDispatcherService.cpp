@@ -23,7 +23,7 @@
 #include "PtUtils.h"
 #include "partialtransaction/src/chain/PtUpdater.h"
 #include "partialtransaction/src/chain/PtValidator.h"
-#include "partialtransaction/src/handlers/CosignatureHandler.h"
+#include "partialtransaction/src/handlers/CosignatureHandlers.h"
 #include "partialtransaction/src/handlers/PtHandlers.h"
 #include "catapult/cache_tx/MemoryPtCache.h"
 #include "catapult/consumers/RecentHashCache.h"
@@ -39,13 +39,12 @@
 
 using namespace catapult::consumers;
 using namespace catapult::disruptor;
-using namespace catapult::extensions;
 
 namespace catapult { namespace partialtransaction {
 
 	namespace {
 		constexpr auto Service_Name = "pt.dispatcher";
-		constexpr auto Api_Partial_Service_Name = "api.partial";
+		constexpr auto Writers_Service_Name = "pt.writers";
 
 		using CosignaturesSink = consumer<const std::vector<model::DetachedCosignature>&>;
 
@@ -68,7 +67,7 @@ namespace catapult { namespace partialtransaction {
 			return std::make_unique<ConsumerDispatcher>(options, consumers, reclaimMemoryInspector);
 		}
 
-		auto CreateKnownHashPredicate(const cache::MemoryPtCacheProxy& ptCache, ServiceState& state) {
+		auto CreateKnownHashPredicate(const cache::MemoryPtCacheProxy& ptCache, extensions::ServiceState& state) {
 			const auto& utCache = const_cast<const extensions::ServiceState&>(state).utCache();
 			auto knownHashPredicate = state.hooks().knownHashPredicate(utCache);
 			return [&ptCache, knownHashPredicate](auto timestamp, const auto& hash) {
@@ -79,12 +78,12 @@ namespace catapult { namespace partialtransaction {
 		auto CreateNewTransactionSink(const extensions::ServiceLocator& locator) {
 			return extensions::CreatePushEntitySink<extensions::SharedNewTransactionsSink>(
 					locator,
-					Api_Partial_Service_Name,
+					Writers_Service_Name,
 					ionet::PacketType::Push_Partial_Transactions);
 		}
 
 		auto CreateNewCosignaturesSink(const extensions::ServiceLocator& locator) {
-			return extensions::CreatePushEntitySink<CosignaturesSink>(locator, Api_Partial_Service_Name);
+			return extensions::CreatePushEntitySink<CosignaturesSink>(locator, Writers_Service_Name);
 		}
 
 		class TransactionDispatcherBuilder {
@@ -165,26 +164,26 @@ namespace catapult { namespace partialtransaction {
 					*pDispatcher,
 					state.config().BlockChain.Network.NodeEqualityStrategy);
 			locator.registerRootedService("pt.dispatcher.batch", pBatchRangeDispatcher);
+			auto& batchRangeDispatcher = *pBatchRangeDispatcher;
 
 			// register hooks
 			const auto& nodeConfig = state.config().Node;
-			auto pRecentHashCache = std::make_shared<RecentHashCache>(
+			auto pRecentHashCache = std::make_shared<SynchronizedRecentHashCache>(
 					state.timeSupplier(),
 					extensions::CreateHashCheckOptions(nodeConfig.ShortLivedCacheTransactionDuration, nodeConfig));
+
 			auto cosignaturesSink = CreateNewCosignaturesSink(locator);
-			auto pCacheLock = std::make_shared<utils::SpinLock>();
 			auto& hooks = GetPtServerHooks(locator);
-			hooks.setCosignedTransactionInfosConsumer(
-					[&dispatcher = *pBatchRangeDispatcher, &ptUpdater, pRecentHashCache, cosignaturesSink, pCacheLock](auto&& infos) {
-				CATAPULT_LOG(debug) << "pushing infos " << infos.size() << " to pt dispatcher";
+			hooks.setCosignedTransactionInfosConsumer([&batchRangeDispatcher, &ptUpdater, pRecentHashCache, cosignaturesSink](
+					auto&& transactionInfos) {
+				CATAPULT_LOG(debug) << "pushing " << transactionInfos.size() << " transaction infos to pt dispatcher";
 				std::vector<model::DetachedCosignature> newCosignatures;
 				SplitCosignedTransactionInfos(
-						std::move(infos),
-						[&dispatcher](auto&& transactionRange) {
-							dispatcher.queue(std::move(transactionRange), InputSource::Remote_Pull);
+						std::move(transactionInfos),
+						[&batchRangeDispatcher](auto&& transactionRange) {
+							batchRangeDispatcher.queue(std::move(transactionRange), InputSource::Remote_Pull);
 						},
-						[&ptUpdater, &newCosignatures, pRecentHashCache, pCacheLock](auto&& cosignature) {
-							utils::SpinLockGuard guard(*pCacheLock);
+						[&ptUpdater, &newCosignatures, pRecentHashCache](auto&& cosignature) {
 							if (pRecentHashCache->add(ToHash(cosignature))) {
 								ptUpdater.update(cosignature);
 								newCosignatures.push_back(cosignature);
@@ -195,12 +194,11 @@ namespace catapult { namespace partialtransaction {
 					cosignaturesSink(newCosignatures);
 			});
 
-			hooks.setPtRangeConsumer([&dispatcher = *pBatchRangeDispatcher](auto&& transactionRange) {
-				dispatcher.queue(std::move(transactionRange), InputSource::Remote_Push);
+			hooks.setPtRangeConsumer([&batchRangeDispatcher](auto&& transactionRange) {
+				batchRangeDispatcher.queue(std::move(transactionRange), InputSource::Remote_Push);
 			});
 
-			hooks.setCosignatureRangeConsumer([&ptUpdater, pRecentHashCache, cosignaturesSink, pCacheLock](auto&& cosignatureRange) {
-				utils::SpinLockGuard guard(*pCacheLock);
+			hooks.setCosignatureRangeConsumer([&ptUpdater, pRecentHashCache, cosignaturesSink](auto&& cosignatureRange) {
 				std::vector<model::DetachedCosignature> newCosignatures;
 				for (const auto& cosignature : cosignatureRange.Range) {
 					if (pRecentHashCache->add(ToHash(cosignature))) {
@@ -213,11 +211,11 @@ namespace catapult { namespace partialtransaction {
 					cosignaturesSink(newCosignatures);
 			});
 
-			state.tasks().push_back(extensions::CreateBatchTransactionTask(*pBatchRangeDispatcher, "partial transaction"));
+			state.tasks().push_back(extensions::CreateBatchTransactionTask(batchRangeDispatcher, "partial transaction"));
 		}
 
-		std::unique_ptr<chain::PtUpdater> CreateAndRegisterPtUpdater(cache::MemoryPtCacheProxy& ptCache, extensions::ServiceState& state) {
-			auto pUpdaterPool = state.pool().pushIsolatedPool("ptUpdater");
+		std::unique_ptr<chain::PtUpdater> CreatePtUpdater(cache::MemoryPtCacheProxy& ptCache, extensions::ServiceState& state) {
+			auto* pUpdaterPool = state.pool().pushIsolatedPool("ptUpdater");
 
 			// validator needs to be created here because bootstrapper does not have cache nor all validators registered
 			auto pValidator = chain::CreatePtValidator(state.cache(), state.timeSupplier(), state.pluginManager());
@@ -231,23 +229,23 @@ namespace catapult { namespace partialtransaction {
 						consumer(model::TransactionRange::FromEntity(std::move(pTransaction)));
 					},
 					extensions::SubscriberToSink(state.transactionStatusSubscriber()),
-					pUpdaterPool);
+					*pUpdaterPool);
 		}
 
-		class PtDispatcherServiceRegistrar : public ServiceRegistrar {
+		class PtDispatcherServiceRegistrar : public extensions::ServiceRegistrar {
 		public:
-			ServiceRegistrarInfo info() const override {
-				return { "PtDispatcher", ServiceRegistrarPhase::Post_Range_Consumers };
+			extensions::ServiceRegistrarInfo info() const override {
+				return { "PtDispatcher", extensions::ServiceRegistrarPhase::Post_Range_Consumers };
 			}
 
-			void registerServiceCounters(ServiceLocator& locator) override {
+			void registerServiceCounters(extensions::ServiceLocator& locator) override {
 				extensions::AddDispatcherCounters(locator, Service_Name, "PT");
 			}
 
-			void registerServices(ServiceLocator& locator, ServiceState& state) override {
+			void registerServices(extensions::ServiceLocator& locator, extensions::ServiceState& state) override {
 				// partial transaction updater
 				auto& ptCache = GetMemoryPtCache(locator);
-				auto pPtUpdater = CreateAndRegisterPtUpdater(ptCache, state);
+				auto pPtUpdater = CreatePtUpdater(ptCache, state);
 
 				// partial transaction dispatcher
 				auto pServiceGroup = state.pool().pushServiceGroup("partial dispatcher");
@@ -263,7 +261,7 @@ namespace catapult { namespace partialtransaction {
 		};
 	}
 
-	std::unique_ptr<ServiceRegistrar> CreatePtDispatcherServiceRegistrar() {
+	std::unique_ptr<extensions::ServiceRegistrar> CreatePtDispatcherServiceRegistrar() {
 		return std::make_unique<PtDispatcherServiceRegistrar>();
 	}
 }}

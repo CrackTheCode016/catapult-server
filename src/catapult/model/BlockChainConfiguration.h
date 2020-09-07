@@ -56,9 +56,6 @@ namespace catapult { namespace model {
 		/// \note This can lower security because it will increase the influence of time relative to importance.
 		uint32_t BlockTimeSmoothingFactor;
 
-		/// Number of blocks between successive finalization attempts.
-		uint32_t BlockFinalizationInterval;
-
 		/// Number of blocks that should be treated as a group for importance purposes.
 		/// \note Importances will only be calculated at blocks that are multiples of this grouping number.
 		uint64_t ImportanceGrouping;
@@ -99,14 +96,27 @@ namespace catapult { namespace model {
 		/// Minimum number of harvesting mosaic atomic units needed for an account to be eligible for voting.
 		Amount MinVoterBalance;
 
+		/// Number of blocks that should be treated as a group for voting set purposes.
+		/// \note Voting sets will only be calculated at blocks that are multiples of this grouping number.
+		uint64_t VotingSetGrouping;
+
+		/// Maximum number of voting keys that can be registered at once per account.
+		uint8_t MaxVotingKeysPerAccount;
+
+		/// Minimum number of finalization rounds for which voting key can be registered.
+		uint32_t MinVotingKeyLifetime;
+
+		/// Maximum number of finalization rounds for which voting key can be registered.
+		uint32_t MaxVotingKeyLifetime;
+
 		/// Percentage of the harvested fee that is collected by the beneficiary account.
 		uint8_t HarvestBeneficiaryPercentage;
 
 		/// Percentage of the harvested fee that is collected by the network.
 		uint8_t HarvestNetworkPercentage;
 
-		/// Public key of the harvest network fee sink account.
-		Key HarvestNetworkFeeSinkPublicKey;
+		/// Address of the harvest network fee sink account.
+		Address HarvestNetworkFeeSinkAddress;
 
 		/// Number of blocks between cache pruning.
 		uint32_t BlockPruneInterval;

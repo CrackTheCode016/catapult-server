@@ -53,9 +53,10 @@ namespace catapult { namespace consumers {
 		public:
 			SyncState() = default;
 
-			explicit SyncState(cache::CatapultCache& cache)
+			SyncState(cache::CatapultCache& cache, Height localFinalizedHeight)
 					: m_pOriginalCache(&cache)
 					, m_pCacheDelta(std::make_unique<cache::CatapultCacheDelta>(cache.createDelta()))
+					, m_localFinalizedHeight(localFinalizedHeight)
 			{}
 
 		public:
@@ -94,13 +95,25 @@ namespace catapult { namespace consumers {
 			}
 
 			void commit(Height height) {
+				auto& lastFinalizedHeight = m_pCacheDelta->dependentState().LastFinalizedHeight;
+				pruneRange(lastFinalizedHeight, m_localFinalizedHeight);
+				lastFinalizedHeight = m_localFinalizedHeight;
+
 				m_pOriginalCache->commit(height);
 				m_pCacheDelta.reset(); // release the delta after commit so that the UT updater can acquire a lock
 			}
 
 		private:
+			void pruneRange(Height startHeight, Height endHeight) {
+				for (auto height = startHeight; height <= endHeight; height = height + Height(1))
+					m_pCacheDelta->prune(height);
+			}
+
+		private:
 			cache::CatapultCache* m_pOriginalCache;
 			std::unique_ptr<cache::CatapultCacheDelta> m_pCacheDelta; // unique_ptr to allow explicit release of lock in commit
+			Height m_localFinalizedHeight;
+
 			std::shared_ptr<const model::BlockElement> m_pCommonBlockElement;
 			model::ChainScore m_scoreDelta;
 			TransactionInfos m_removedTransactionInfos;
@@ -108,14 +121,9 @@ namespace catapult { namespace consumers {
 
 		class BlockChainSyncConsumer {
 		public:
-			BlockChainSyncConsumer(
-					cache::CatapultCache& cache,
-					io::BlockStorageCache& storage,
-					uint32_t maxRollbackBlocks,
-					const BlockChainSyncHandlers& handlers)
+			BlockChainSyncConsumer(cache::CatapultCache& cache, io::BlockStorageCache& storage, const BlockChainSyncHandlers& handlers)
 					: m_cache(cache)
 					, m_storage(storage)
-					, m_maxRollbackBlocks(maxRollbackBlocks)
 					, m_handlers(handlers)
 			{}
 
@@ -144,7 +152,6 @@ namespace catapult { namespace consumers {
 				return Continue();
 			}
 
-		private:
 			ConsumerResult preprocess(const BlockElements& elements, InputSource source, SyncState& syncState) const {
 				// 1. check that the peer chain can be linked to the current chain
 				auto storageView = m_storage.view();
@@ -154,8 +161,8 @@ namespace catapult { namespace consumers {
 					return Abort(Failure_Consumer_Remote_Chain_Unlinked);
 
 				// 2. check that the remote chain is not too far behind the current chain
-				auto heightDifference = static_cast<int64_t>((localChainHeight - peerStartHeight).unwrap());
-				if (heightDifference > m_maxRollbackBlocks)
+				auto localFinalizedHeight = m_handlers.LocalFinalizedHeightSupplier();
+				if (peerStartHeight <= localFinalizedHeight)
 					return Abort(Failure_Consumer_Remote_Chain_Too_Far_Behind);
 
 				// 3. check difficulties against difficulties in cache
@@ -164,7 +171,7 @@ namespace catapult { namespace consumers {
 					return Abort(Failure_Consumer_Remote_Chain_Difficulties_Mismatch);
 
 				// 4. unwind to the common block height and calculate the local chain score
-				syncState = SyncState(m_cache);
+				syncState = SyncState(m_cache, localFinalizedHeight);
 				auto commonBlockHeight = peerStartHeight - Height(1);
 				auto observerState = syncState.observerState();
 				auto unwindResult = unwindLocalChain(localChainHeight, commonBlockHeight, storageView, observerState);
@@ -184,16 +191,6 @@ namespace catapult { namespace consumers {
 				peerScore -= localScore; // calculate the score delta
 				syncState.update(std::move(pCommonBlockElement), std::move(peerScore), std::move(unwindResult.TransactionInfos));
 				return Continue();
-			}
-
-			static constexpr bool IsLinked(Height peerStartHeight, Height localChainHeight, InputSource source) {
-				// peer should never return nemesis block
-				return peerStartHeight >= Height(2)
-						// peer chain should connect to local chain
-						&& peerStartHeight <= localChainHeight + Height(1)
-						// remote pull is allowed to cause (deep) rollback, but other sources
-						// are only allowed to rollback the last block
-						&& (InputSource::Remote_Pull == source || localChainHeight <= peerStartHeight);
 			}
 
 			UnwindResult unwindLocalChain(
@@ -241,15 +238,17 @@ namespace catapult { namespace consumers {
 			}
 
 			void commitAll(const BlockElements& elements, SyncState& syncState) const {
-				utils::SlowOperationLogger logger("BlockChainSyncConsumer::commitAll", utils::LogLevel::Warning);
+				utils::SlowOperationLogger logger("BlockChainSyncConsumer::commitAll", utils::LogLevel::warning);
 
 				// 1. save the peer chain into storage
+				logger.addSubOperation("save the peer chain into storage");
 				auto storageModifier = m_storage.modifier();
 				storageModifier.dropBlocksAfter(syncState.commonBlockHeight());
 				storageModifier.saveBlocks(elements);
 				m_handlers.CommitStep(CommitOperationStep::Blocks_Written);
 
 				// 2. indicate a state change
+				logger.addSubOperation("indicate a state change");
 				auto newHeight = elements.back().Block.Height;
 				m_handlers.StateChange({ cache::CacheChanges(syncState.cacheDelta()), syncState.scoreDelta(), newHeight });
 				m_handlers.PreStateWritten(syncState.cacheDelta(), newHeight);
@@ -260,11 +259,15 @@ namespace catapult { namespace consumers {
 				// - broker process is not yet able to consume changes (all changes are consumable after step 3)
 
 				// 3. commit changes to the in-memory cache and primary block chain storage
+				logger.addSubOperation("commit changes to the in-memory cache");
 				syncState.commit(newHeight);
+
+				logger.addSubOperation("commit changes to the primary block chain storage");
 				storageModifier.commit();
 				m_handlers.CommitStep(CommitOperationStep::All_Updated);
 
 				// 4. update the unconfirmed transactions
+				logger.addSubOperation("update the unconfirmed transactions");
 				auto peerTransactionHashes = ExtractTransactionHashes(elements);
 				auto revertedTransactionInfos = CollectRevertedTransactionInfos(
 						peerTransactionHashes,
@@ -273,9 +276,19 @@ namespace catapult { namespace consumers {
 			}
 
 		private:
+			static constexpr bool IsLinked(Height peerStartHeight, Height localChainHeight, InputSource source) {
+				// peer should never return nemesis block
+				return peerStartHeight >= Height(2)
+						// peer chain should connect to local chain
+						&& peerStartHeight <= localChainHeight + Height(1)
+						// remote pull is allowed to cause (deep) rollback, but other sources
+						// are only allowed to rollback the last block
+						&& (InputSource::Remote_Pull == source || localChainHeight <= peerStartHeight);
+			}
+
+		private:
 			cache::CatapultCache& m_cache;
 			io::BlockStorageCache& m_storage;
-			uint32_t m_maxRollbackBlocks;
 			BlockChainSyncHandlers m_handlers;
 		};
 	}
@@ -283,8 +296,7 @@ namespace catapult { namespace consumers {
 	disruptor::DisruptorConsumer CreateBlockChainSyncConsumer(
 			cache::CatapultCache& cache,
 			io::BlockStorageCache& storage,
-			uint32_t maxRollbackBlocks,
 			const BlockChainSyncHandlers& handlers) {
-		return BlockChainSyncConsumer(cache, storage, maxRollbackBlocks, handlers);
+		return BlockChainSyncConsumer(cache, storage, handlers);
 	}
 }}

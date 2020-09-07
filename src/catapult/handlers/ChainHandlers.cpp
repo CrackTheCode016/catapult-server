@@ -59,19 +59,18 @@ namespace catapult { namespace handlers {
 	}
 
 	namespace {
-		void SetHeights(api::ChainInfoResponse& responsePacket, io::BlockStorageView&& storageView) {
-			responsePacket.Height = storageView.chainHeight();
-			responsePacket.FinalizedHeight = storageView.finalizedChainHeight();
-		}
-
-		auto CreateChainInfoHandler(const io::BlockStorageCache& storage, const model::ChainScoreSupplier& chainScoreSupplier) {
-			return [&storage, chainScoreSupplier](const auto& packet, auto& context) {
-				using RequestType = api::ChainInfoResponse;
+		auto CreateChainStatisticsHandler(
+				const io::BlockStorageCache& storage,
+				const model::ChainScoreSupplier& chainScoreSupplier,
+				const supplier<Height>& finalizedHeightSupplier) {
+			return [&storage, chainScoreSupplier, finalizedHeightSupplier](const auto& packet, auto& context) {
+				using RequestType = api::ChainStatisticsResponse;
 				if (!ionet::IsPacketValid(packet, RequestType::Packet_Type))
 					return;
 
 				auto pResponsePacket = ionet::CreateSharedPacket<RequestType>();
-				SetHeights(*pResponsePacket, storage.view());
+				pResponsePacket->Height = storage.view().chainHeight();
+				pResponsePacket->FinalizedHeight = finalizedHeightSupplier();
 
 				auto scoreArray = chainScoreSupplier().toArray();
 				pResponsePacket->ScoreHigh = scoreArray[0];
@@ -81,11 +80,14 @@ namespace catapult { namespace handlers {
 		}
 	}
 
-	void RegisterChainInfoHandler(
+	void RegisterChainStatisticsHandler(
 			ionet::ServerPacketHandlers& handlers,
 			const io::BlockStorageCache& storage,
-			const model::ChainScoreSupplier& chainScoreSupplier) {
-		handlers.registerHandler(ionet::PacketType::Chain_Info, CreateChainInfoHandler(storage, chainScoreSupplier));
+			const model::ChainScoreSupplier& chainScoreSupplier,
+			const supplier<Height>& finalizedHeightSupplier) {
+		handlers.registerHandler(
+				ionet::PacketType::Chain_Statistics,
+				CreateChainStatisticsHandler(storage, chainScoreSupplier, finalizedHeightSupplier));
 	}
 
 	namespace {

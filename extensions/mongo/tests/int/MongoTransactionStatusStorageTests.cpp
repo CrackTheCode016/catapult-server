@@ -39,56 +39,22 @@ namespace catapult { namespace mongo {
 		constexpr size_t Num_Transaction_Statuses = 10;
 		constexpr auto Collection_Name = "transactionStatuses";
 
+		// region test utils
+
 		using TransactionStatusesMap = std::unordered_map<Hash256, model::TransactionStatus, utils::ArrayHasher<Hash256>>;
 
-		auto ResetDatabaseAndCreateMongoContext() {
+		auto ResetDatabaseAndCreateMongoContext(thread::IoThreadPool& pool) {
 			test::ResetDatabase(test::DatabaseName());
-			return test::CreateDefaultMongoStorageContext(test::DatabaseName());
+			return test::CreateDefaultMongoStorageContext(test::DatabaseName(), pool);
 		}
 
 		auto CreateTransactionStatuses(size_t count) {
 			std::vector<model::TransactionStatus> statuses;
-			for (auto i = 0u; i < count; ++i)
+			for (auto i = 1u; i <= count; ++i)
 				statuses.emplace_back(test::GenerateRandomByteArray<Hash256>(), Timestamp(i * i), i);
 
 			return statuses;
 		}
-
-		class TransactionStatusSubscriberContext {
-		public:
-			explicit TransactionStatusSubscriberContext(size_t numTransactionStatuses)
-					: m_pMongoContext(ResetDatabaseAndCreateMongoContext())
-					, m_pSubscriber(CreateMongoTransactionStatusStorage(*m_pMongoContext))
-					, m_statuses(CreateTransactionStatuses(numTransactionStatuses))
-			{}
-
-		public:
-			subscribers::TransactionStatusSubscriber& subscriber() {
-				return *m_pSubscriber;
-			}
-
-			const std::vector<model::TransactionStatus>& statuses() const {
-				return m_statuses;
-			}
-
-			TransactionStatusesMap toMap() {
-				TransactionStatusesMap map;
-				for (const auto& status : m_statuses)
-					map.emplace(status.Hash, status);
-
-				return map;
-			}
-
-			void saveTransactionStatus(const model::TransactionStatus& status) {
-				m_pSubscriber->notifyStatus(*test::GenerateTransactionWithDeadline(status.Deadline), status.Hash, status.Status);
-				m_pSubscriber->flush();
-			}
-
-		private:
-			std::unique_ptr<MongoStorageContext> m_pMongoContext;
-			std::unique_ptr<subscribers::TransactionStatusSubscriber> m_pSubscriber;
-			std::vector<model::TransactionStatus> m_statuses;
-		};
 
 		void AssertTransactionStatuses(const TransactionStatusesMap& expectedTransactionStatuses) {
 			auto connection = test::CreateDbConnection();
@@ -102,8 +68,7 @@ namespace catapult { namespace mongo {
 			for (const auto& view : txCursor) {
 				auto statusView = view["status"].get_document().view();
 
-				Hash256 dbHash;
-				mappers::DbBinaryToModelArray(dbHash, statusView["hash"].get_binary());
+				auto dbHash = test::GetHashValue(statusView, "hash");
 				auto expectedIter = expectedTransactionStatuses.find(dbHash);
 				ASSERT_TRUE(expectedTransactionStatuses.cend() != expectedIter);
 
@@ -113,6 +78,51 @@ namespace catapult { namespace mongo {
 				EXPECT_EQ(status.Deadline, Timestamp(test::GetUint64(statusView, "deadline")));
 			}
 		}
+
+		// endregion
+
+		// region TransactionStatusSubscriberContext
+
+		class TransactionStatusSubscriberContext {
+		public:
+			explicit TransactionStatusSubscriberContext(size_t numTransactionStatuses)
+					: m_pPool(test::CreateStartedIoThreadPool(test::Num_Default_Mongo_Test_Pool_Threads))
+					, m_pMongoContext(ResetDatabaseAndCreateMongoContext(*m_pPool))
+					, m_pSubscriber(CreateMongoTransactionStatusStorage(*m_pMongoContext))
+					, m_statuses(CreateTransactionStatuses(numTransactionStatuses))
+			{}
+
+		public:
+			subscribers::TransactionStatusSubscriber& subscriber() {
+				return *m_pSubscriber;
+			}
+
+			const std::vector<model::TransactionStatus>& statuses() const {
+				return m_statuses;
+			}
+
+			TransactionStatusesMap toMap() const {
+				TransactionStatusesMap map;
+				for (const auto& status : m_statuses)
+					map.emplace(status.Hash, status);
+
+				return map;
+			}
+
+		public:
+			void saveTransactionStatus(const model::TransactionStatus& status) {
+				m_pSubscriber->notifyStatus(*test::GenerateTransactionWithDeadline(status.Deadline), status.Hash, status.Status);
+				m_pSubscriber->flush();
+			}
+
+		private:
+			std::unique_ptr<thread::IoThreadPool> m_pPool;
+			std::unique_ptr<MongoStorageContext> m_pMongoContext;
+			std::unique_ptr<subscribers::TransactionStatusSubscriber> m_pSubscriber;
+			std::vector<model::TransactionStatus> m_statuses;
+		};
+
+		// endregion
 	}
 
 	// region notifyStatus

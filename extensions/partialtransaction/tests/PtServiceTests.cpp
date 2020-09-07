@@ -33,18 +33,13 @@ namespace catapult { namespace partialtransaction {
 #define TEST_CLASS PtServiceTests
 
 	namespace {
-		constexpr auto Num_Expected_Tasks = 2u;
-
 		struct PtServiceTraits {
 			static constexpr auto Counter_Name = "PT WRITERS";
 			static constexpr auto Num_Expected_Services = 3u; // writers (1) + dependent services (2)
+			static constexpr auto CreateRegistrar = CreatePtServiceRegistrar;
 
 			static auto GetWriters(const extensions::ServiceLocator& locator) {
-				return locator.service<net::PacketWriters>("api.partial");
-			}
-
-			static auto CreateRegistrar() {
-				return CreatePtServiceRegistrar();
+				return locator.service<net::PacketWriters>("pt.writers");
 			}
 		};
 
@@ -99,12 +94,11 @@ namespace catapult { namespace partialtransaction {
 
 	// region tasks
 
-	TEST(TEST_CLASS, ConnectPeersTaskIsScheduled) {
-		test::AssertRegisteredTask(TestContext(), Num_Expected_Tasks, "connect peers task for service Pt");
-	}
-
-	TEST(TEST_CLASS, PullPtTaskIsScheduled) {
-		test::AssertRegisteredTask(TestContext(), Num_Expected_Tasks, "pull partial transactions task");
+	TEST(TEST_CLASS, TasksAreRegistered) {
+		test::AssertRegisteredTasks(TestContext(), {
+			"connect peers task for service Pt",
+			"pull partial transactions task"
+		});
 	}
 
 	// endregion

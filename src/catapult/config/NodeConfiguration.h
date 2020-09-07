@@ -57,6 +57,9 @@ namespace catapult { namespace config {
 		/// Maximum fee that will boost a transaction through the spam throttle when spam throttling is enabled.
 		Amount TransactionSpamThrottlingMaxBoostFee;
 
+		/// Maximum number of hashes per sync attempt.
+		uint32_t MaxHashesPerSyncAttempt;
+
 		/// Maximum number of blocks per sync attempt.
 		uint32_t MaxBlocksPerSyncAttempt;
 
@@ -126,9 +129,6 @@ namespace catapult { namespace config {
 
 		/// Maximum number of nodes to track in memory.
 		uint32_t MaxTrackedNodes;
-
-		/// Source of random numbers used in batch verification.
-		std::string BatchVerificationRandomSource;
 
 		/// Trusted hosts that are allowed to execute protected API calls on this node.
 		std::unordered_set<std::string> TrustedHosts;

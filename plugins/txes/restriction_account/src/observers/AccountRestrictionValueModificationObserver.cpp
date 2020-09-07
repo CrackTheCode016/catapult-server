@@ -45,7 +45,7 @@ namespace catapult { namespace observers {
 		template<typename TNotification>
 		void ObserveNotification(const TNotification& notification, const ObserverContext& context) {
 			auto& restrictionCache = context.Cache.sub<cache::AccountRestrictionCache>();
-			auto address = model::PublicKeyToAddress(notification.Key, restrictionCache.networkIdentifier());
+			const auto& address = notification.Address;
 
 			auto restrictionsIter = restrictionCache.find(address);
 			if (!restrictionsIter.tryGet()) {
@@ -76,7 +76,7 @@ namespace catapult { namespace observers {
 			const model::ModifyAccount##RESTRICTION_VALUE_NAME##Notification& notification, \
 			const ObserverContext& context) { \
 		ObserveNotification<model::ModifyAccount##RESTRICTION_VALUE_NAME##Notification>(notification, context); \
-	});
+	})
 
 	DEFINE_ACCOUNT_RESTRICTION_MODIFICATION_OBSERVER(AddressRestrictionValue)
 	DEFINE_ACCOUNT_RESTRICTION_MODIFICATION_OBSERVER(MosaicRestrictionValue)

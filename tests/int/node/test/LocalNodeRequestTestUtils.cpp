@@ -34,17 +34,26 @@ namespace catapult { namespace test {
 		CATAPULT_LOG(debug) << " >>>> starting push";
 		std::atomic_bool isWriteFinished(false);
 		connection.connect([&isWriteFinished, &payload](const auto& pPacketSocket) {
-			CATAPULT_LOG(debug) << "writing entity";
-			pPacketSocket->write(payload, [&isWriteFinished](auto code) {
-				CATAPULT_LOG(debug) << "write result: " << code;
+			auto pBufferedIo = pPacketSocket->buffered();
 
-				// give server enough time for ssl handshake
-				test::Sleep(500);
+			CATAPULT_LOG(debug) << "writing entity";
+			pBufferedIo->write(payload, [&isWriteFinished](auto code) {
+				CATAPULT_LOG(debug) << "write result: " << code;
 				isWriteFinished = true;
+			});
+
+			// perform a chain statistics (request / response) to ensure socket is not closed until ssl handshake is completed
+			api::CreateRemoteChainApiWithoutRegistry(*pBufferedIo)->chainStatistics().then([](auto&& chainStatisticsFuture) {
+				try {
+					CATAPULT_LOG(debug) << "received height from remote after pushing payload: " << chainStatisticsFuture.get().Height;
+				} catch (const api::catapult_api_error& ex) {
+					CATAPULT_LOG(warning) << "could not receive height from remote after pushing payload: " << ex.what();
+				}
 			});
 		});
 
 		WAIT_FOR(isWriteFinished);
+
 		CATAPULT_LOG(debug) << " <<< push finished";
 		return connection.io();
 	}
@@ -99,10 +108,14 @@ namespace catapult { namespace test {
 
 	// region height
 
+	namespace {
+		constexpr auto Long_Wait_Seconds = 15u;
+	}
+
 	Height GetLocalNodeHeightViaApi(ExternalSourceConnection& connection) {
-		struct ChainInfoResult {
+		struct ChainStatisticsResult {
 		public:
-			ChainInfoResult() : IsHeightReceived(false)
+			ChainStatisticsResult() : IsHeightReceived(false)
 			{}
 
 		public:
@@ -110,16 +123,16 @@ namespace catapult { namespace test {
 			std::atomic_bool IsHeightReceived;
 		};
 
-		auto pChainInfoResult = std::make_shared<ChainInfoResult>();
-		connection.apiCall([pChainInfoResult](const auto& pRemoteChainApi) {
-			pRemoteChainApi->chainInfo().then([pChainInfoResult](auto&& infoFuture) {
-				pChainInfoResult->Height = infoFuture.get().Height;
-				pChainInfoResult->IsHeightReceived = true;
+		auto pChainStatisticsResult = std::make_shared<ChainStatisticsResult>();
+		connection.apiCall([pChainStatisticsResult](const auto& pRemoteChainApi) {
+			pRemoteChainApi->chainStatistics().then([pChainStatisticsResult](auto&& chainStatisticsFuture) {
+				pChainStatisticsResult->Height = chainStatisticsFuture.get().Height;
+				pChainStatisticsResult->IsHeightReceived = true;
 			});
 		});
 
-		WAIT_FOR(pChainInfoResult->IsHeightReceived);
-		return Height(pChainInfoResult->Height);
+		WAIT_FOR_VALUE_SECONDS(true, pChainStatisticsResult->IsHeightReceived, Long_Wait_Seconds);
+		return Height(pChainStatisticsResult->Height);
 	}
 
 	void WaitForLocalNodeHeight(ExternalSourceConnection& connection, Height height) {
@@ -135,8 +148,7 @@ namespace catapult { namespace test {
 			return currentHeight;
 		};
 
-		WAIT_FOR_VALUE_EXPR_SECONDS(height, heightSupplierWithBackoff(), 15);
-
+		WAIT_FOR_VALUE_EXPR_SECONDS(height, heightSupplierWithBackoff(), Long_Wait_Seconds);
 	}
 
 	// endregion

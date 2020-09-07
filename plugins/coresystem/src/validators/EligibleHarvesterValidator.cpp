@@ -29,8 +29,8 @@ namespace catapult { namespace validators {
 
 	DEFINE_STATEFUL_VALIDATOR(EligibleHarvester, [](const Notification& notification, const ValidatorContext& context) {
 		cache::ImportanceView view(context.Cache.sub<cache::AccountStateCache>());
-		return view.canHarvest(notification.Signer, context.Height)
+		return view.canHarvest(notification.Harvester, context.Height)
 				? ValidationResult::Success
 				: Failure_Core_Block_Harvester_Ineligible;
-	});
+	})
 }}

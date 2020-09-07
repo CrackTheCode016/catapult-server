@@ -53,22 +53,22 @@ namespace catapult { namespace plugins {
 	private:
 		template<model::FacilityCode FacilityCode>
 		struct CachePacketTypesT {
-			static constexpr auto State_Path = static_cast<ionet::PacketType>(800 + static_cast<uint8_t>(FacilityCode));
-			static constexpr auto Diagnostic_Infos = static_cast<ionet::PacketType>(1200 + static_cast<uint8_t>(FacilityCode));
+			static constexpr auto State_Path = static_cast<ionet::PacketType>(0x200 + utils::to_underlying_type(FacilityCode));
+			static constexpr auto Diagnostic_Infos = static_cast<ionet::PacketType>(0x400 + utils::to_underlying_type(FacilityCode));
 		};
 
-		template<ionet::PacketType PacketType, typename TKey>
+		template<ionet::PacketType PacketType, typename TCacheKey>
 		struct StatePathRequestPacket : public ionet::Packet {
 			static constexpr ionet::PacketType Packet_Type = PacketType;
 
-			TKey Key;
+			TCacheKey Key;
 		};
 
-		template<ionet::PacketType PacketType, typename TKey>
+		template<ionet::PacketType PacketType, typename TCacheKey>
 		struct BatchHandlerFactoryTraits {
 			static constexpr ionet::PacketType Packet_Type = PacketType;
 
-			using RequestStructureType = TKey;
+			using RequestStructureType = TCacheKey;
 		};
 	};
 }}

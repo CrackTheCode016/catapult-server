@@ -29,11 +29,11 @@ namespace catapult { namespace cache {
 	BasicAccountStateCacheDelta::BasicAccountStateCacheDelta(
 			const AccountStateCacheTypes::BaseSetDeltaPointers& accountStateSets,
 			const AccountStateCacheTypes::Options& options,
-			const model::AddressSet& highValueAddresses)
+			const HighValueAccounts& highValueAccounts)
 			: BasicAccountStateCacheDelta(
 					accountStateSets,
 					options,
-					highValueAddresses,
+					highValueAccounts,
 					std::make_unique<AccountStateCacheDeltaMixins::KeyLookupAdapter>(
 							*accountStateSets.pKeyLookupMap,
 							*accountStateSets.pPrimary))
@@ -42,22 +42,20 @@ namespace catapult { namespace cache {
 	BasicAccountStateCacheDelta::BasicAccountStateCacheDelta(
 			const AccountStateCacheTypes::BaseSetDeltaPointers& accountStateSets,
 			const AccountStateCacheTypes::Options& options,
-			const model::AddressSet& highValueAddresses,
+			const HighValueAccounts& highValueAccounts,
 			std::unique_ptr<AccountStateCacheDeltaMixins::KeyLookupAdapter>&& pKeyLookupAdapter)
 			: AccountStateCacheDeltaMixins::Size(*accountStateSets.pPrimary)
 			, AccountStateCacheDeltaMixins::ContainsAddress(*accountStateSets.pPrimary)
 			, AccountStateCacheDeltaMixins::ContainsKey(*accountStateSets.pKeyLookupMap)
 			, AccountStateCacheDeltaMixins::ConstAccessorAddress(*accountStateSets.pPrimary)
 			, AccountStateCacheDeltaMixins::ConstAccessorKey(*pKeyLookupAdapter)
-			, AccountStateCacheDeltaMixins::MutableAccessorAddress(*accountStateSets.pPrimary)
-			, AccountStateCacheDeltaMixins::MutableAccessorKey(*pKeyLookupAdapter)
 			, AccountStateCacheDeltaMixins::PatriciaTreeDelta(*accountStateSets.pPrimary, accountStateSets.pPatriciaTree)
 			, AccountStateCacheDeltaMixins::DeltaElements(*accountStateSets.pPrimary)
 			, m_pStateByAddress(accountStateSets.pPrimary)
 			, m_pKeyToAddress(accountStateSets.pKeyLookupMap)
 			, m_options(options)
-			, m_highValueAddresses(highValueAddresses)
 			, m_pKeyLookupAdapter(std::move(pKeyLookupAdapter))
+			, m_highValueAccountsUpdater(m_options, highValueAccounts)
 	{}
 
 	model::NetworkIdentifier BasicAccountStateCacheDelta::networkIdentifier() const {
@@ -80,15 +78,25 @@ namespace catapult { namespace cache {
 		return m_options.HarvestingMosaicId;
 	}
 
-	Address BasicAccountStateCacheDelta::getAddress(const Key& publicKey) {
-		auto keyToAddressIter = m_pKeyToAddress->find(publicKey);
-		const auto* pPair = keyToAddressIter.get();
-		if (pPair)
-			return pPair->second;
+	namespace {
+		template<typename TIterator>
+		TIterator PrepareMutableIterator(TIterator&& iter, const AccountStateCacheTypes::Options& options) {
+			// in order to guarantee deterministic sorting of mosaics, CurrencyMosaicId always needs to be set as the optimized mosaic id
+			// before the iterator is returned because that information is lost during serialization when the AccountState doesn't
+			// contain any CurrencyMosaicId balance
+			if (iter.tryGet())
+				iter.get().Balances.optimize(options.CurrencyMosaicId);
 
-		auto address = model::PublicKeyToAddress(publicKey, m_options.NetworkIdentifier);
-		m_pKeyToAddress->emplace(publicKey, address);
-		return address;
+			return std::move(iter);
+		}
+	}
+
+	AccountStateCacheDeltaMixins::MutableAccessorAddress::iterator BasicAccountStateCacheDelta::find(const Address& address) {
+		return PrepareMutableIterator(AccountStateCacheDeltaMixins::MutableAccessorAddress(*m_pStateByAddress).find(address), m_options);
+	}
+
+	AccountStateCacheDeltaMixins::MutableAccessorKey::iterator BasicAccountStateCacheDelta::find(const Key& key) {
+		return PrepareMutableIterator(AccountStateCacheDeltaMixins::MutableAccessorKey(*m_pKeyLookupAdapter).find(key), m_options);
 	}
 
 	void BasicAccountStateCacheDelta::addAccount(const Address& address, Height height) {
@@ -123,6 +131,61 @@ namespace catapult { namespace cache {
 
 		m_pStateByAddress->insert(accountState);
 		m_pStateByAddress->find(accountState.Address).get()->Balances.optimize(m_options.CurrencyMosaicId);
+	}
+
+	void BasicAccountStateCacheDelta::queueRemove(const Address& address, Height height) {
+		m_queuedRemoveByAddress.emplace(height, address);
+	}
+
+	void BasicAccountStateCacheDelta::queueRemove(const Key& publicKey, Height height) {
+		m_queuedRemoveByPublicKey.emplace(height, publicKey);
+	}
+
+	void BasicAccountStateCacheDelta::clearRemove(const Address& address, Height height) {
+		m_queuedRemoveByAddress.erase(std::make_pair(height, address));
+	}
+
+	void BasicAccountStateCacheDelta::clearRemove(const Key& publicKey, Height height) {
+		m_queuedRemoveByPublicKey.erase(std::make_pair(height, publicKey));
+	}
+
+	void BasicAccountStateCacheDelta::commitRemovals() {
+		for (const auto& addressHeightPair : m_queuedRemoveByAddress)
+			remove(addressHeightPair.second, addressHeightPair.first);
+
+		for (const auto& keyHeightPair : m_queuedRemoveByPublicKey)
+			remove(keyHeightPair.second, keyHeightPair.first);
+
+		m_queuedRemoveByAddress.clear();
+		m_queuedRemoveByPublicKey.clear();
+	}
+
+	const HighValueAccountsUpdater& BasicAccountStateCacheDelta::highValueAccounts() const {
+		return m_highValueAccountsUpdater;
+	}
+
+	void BasicAccountStateCacheDelta::updateHighValueAccounts(Height height) {
+		m_highValueAccountsUpdater.setHeight(height);
+		m_highValueAccountsUpdater.update(m_pStateByAddress->deltas());
+	}
+
+	HighValueAccounts BasicAccountStateCacheDelta::detachHighValueAccounts() {
+		return m_highValueAccountsUpdater.detachAccounts();
+	}
+
+	void BasicAccountStateCacheDelta::prune(Height height) {
+		m_highValueAccountsUpdater.prune(model::CalculateGroupedHeight<Height>(height, m_options.VotingSetGrouping));
+	}
+
+	Address BasicAccountStateCacheDelta::getAddress(const Key& publicKey) {
+		auto keyToAddressIter = m_pKeyToAddress->find(publicKey);
+		const auto* pPair = keyToAddressIter.get();
+		if (pPair)
+			return pPair->second;
+
+		auto address = model::PublicKeyToAddress(publicKey, m_options.NetworkIdentifier);
+		m_pKeyToAddress->emplace(publicKey, address);
+		return address;
 	}
 
 	void BasicAccountStateCacheDelta::remove(const Address& address, Height height) {
@@ -163,89 +226,4 @@ namespace catapult { namespace cache {
 		accountState.PublicKey = Key();
 	}
 
-	void BasicAccountStateCacheDelta::queueRemove(const Address& address, Height height) {
-		m_queuedRemoveByAddress.emplace(height, address);
-	}
-
-	void BasicAccountStateCacheDelta::queueRemove(const Key& publicKey, Height height) {
-		m_queuedRemoveByPublicKey.emplace(height, publicKey);
-	}
-
-	void BasicAccountStateCacheDelta::clearRemove(const Address& address, Height height) {
-		m_queuedRemoveByAddress.erase(std::make_pair(height, address));
-	}
-
-	void BasicAccountStateCacheDelta::clearRemove(const Key& publicKey, Height height) {
-		m_queuedRemoveByPublicKey.erase(std::make_pair(height, publicKey));
-	}
-
-	void BasicAccountStateCacheDelta::commitRemovals() {
-		for (const auto& addressHeightPair : m_queuedRemoveByAddress)
-			remove(addressHeightPair.second, addressHeightPair.first);
-
-		for (const auto& keyHeightPair : m_queuedRemoveByPublicKey)
-			remove(keyHeightPair.second, keyHeightPair.first);
-
-		m_queuedRemoveByAddress.clear();
-		m_queuedRemoveByPublicKey.clear();
-	}
-
-	namespace {
-		class HighValueAddressesUpdater {
-		private:
-			using DeltasSet = AccountStateCacheTypes::PrimaryTypes::BaseSetDeltaType::SetType::MemorySetType;
-
-		public:
-			HighValueAddressesUpdater(
-					const model::AddressSet& originalHighValueAddresses,
-					BasicAccountStateCacheDelta::HighValueAddressesTuple& highValueAddressesTuple)
-					: m_original(originalHighValueAddresses)
-					, m_current(highValueAddressesTuple.Current)
-					, m_removed(highValueAddressesTuple.Removed)
-			{}
-
-		public:
-			void update(const DeltasSet& source, const predicate<const state::AccountState&>& include) {
-				for (const auto& pair : source) {
-					const auto& accountState = pair.second;
-					const auto& address = accountState.Address;
-					if (include(accountState)) {
-						m_current.insert(address);
-
-						// don't need to modify m_removed because an element can't be in both Added and Copied
-					} else {
-						m_current.erase(address);
-
-						if (m_original.cend() != m_original.find(address))
-							m_removed.insert(address);
-					}
-				}
-			}
-
-		private:
-			const model::AddressSet& m_original;
-			model::AddressSet& m_current;
-			model::AddressSet& m_removed;
-		};
-	}
-
-	BasicAccountStateCacheDelta::HighValueAddressesTuple BasicAccountStateCacheDelta::highValueAddresses() const {
-		// 1. copy original high value addresses
-		HighValueAddressesTuple highValueAddresses;
-		highValueAddresses.Current = m_highValueAddresses;
-
-		// 2. update for changes
-		auto minBalance = m_options.MinHarvesterBalance;
-		auto harvestingMosaicId = m_options.HarvestingMosaicId;
-		auto hasHighValue = [minBalance, harvestingMosaicId](const auto& accountState) {
-			return accountState.Balances.get(harvestingMosaicId) >= minBalance;
-		};
-
-		auto deltas = m_pStateByAddress->deltas();
-		HighValueAddressesUpdater updater(m_highValueAddresses, highValueAddresses);
-		updater.update(deltas.Added, hasHighValue);
-		updater.update(deltas.Copied, hasHighValue);
-		updater.update(deltas.Removed, [](const auto&) { return false; });
-		return highValueAddresses;
-	}
 }}

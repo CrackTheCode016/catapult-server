@@ -79,8 +79,7 @@ namespace catapult { namespace handlers {
 		reinterpret_cast<model::VerifiableEntity&>(buffer.buffer()[dataOffset + tx1Size]).Type = mocks::MockTransaction::Entity_Type;
 
 		// Act:
-		test::PushHandlerTests<PushPtTraits>::RunPushTransactionsHandlerTest(PushPtTraits::RegisterHandler, buffer.packet(), [](
-				const auto& counters) {
+		test::PushHandlerTests<PushPtTraits>::RunPushHandlerTest(PushPtTraits::RegisterHandler, buffer.packet(), [](const auto& counters) {
 			// Assert:
 			EXPECT_TRUE(counters.empty());
 		});
@@ -95,7 +94,7 @@ namespace catapult { namespace handlers {
 			static constexpr auto Data_Header_Size = 0u;
 			static constexpr auto Packet_Type = ionet::PacketType::Pull_Partial_Transaction_Infos;
 			static constexpr auto RegisterHandler = RegisterPullPartialTransactionInfosHandler;
-			static constexpr auto Valid_Request_Payload_Size = sizeof(cache::ShortHashPair);
+			static constexpr auto Valid_Request_Payload_Size = SizeOf32<cache::ShortHashPair>();
 
 			using ResponseType = CosignedTransactionInfos;
 			using RetrieverParamType = cache::ShortHashPairMap;
@@ -111,7 +110,7 @@ namespace catapult { namespace handlers {
 	namespace {
 		auto ExtractFromPacket(const ionet::Packet& packet, size_t numRequestHashPairs) {
 			cache::ShortHashPairMap extractedMap;
-			auto pData = reinterpret_cast<const cache::ShortHashPair*>(packet.Data());
+			const auto* pData = reinterpret_cast<const cache::ShortHashPair*>(packet.Data());
 			for (auto i = 0u; i < numRequestHashPairs; ++i) {
 				extractedMap.emplace(pData->TransactionShortHash, pData->CosignaturesShortHash);
 				++pData;
@@ -203,7 +202,7 @@ namespace catapult { namespace handlers {
 		void AssertPullResponseIsSetWhenPacketIsValid(uint32_t numRequestHashPairs, uint32_t numResponseTransactions) {
 			// Arrange:
 			auto packetType = PullTransactionsTraits::Packet_Type;
-			auto pPacket = test::CreateRandomPacket(numRequestHashPairs * sizeof(cache::ShortHashPair), packetType);
+			auto pPacket = test::CreateRandomPacket(numRequestHashPairs * SizeOf32<cache::ShortHashPair>(), packetType);
 			ionet::ServerPacketHandlers handlers;
 			size_t counter = 0;
 
@@ -234,7 +233,7 @@ namespace catapult { namespace handlers {
 		}
 	}
 
-	DEFINE_PULL_HANDLER_REQUEST_RESPONSE_TESTS(TEST_CLASS, AssertPullResponseIsSetWhenPacketIsValid)
+	DEFINE_PULL_HANDLER_REQUEST_RESPONSE_TESTS(TEST_CLASS, PullTransactions, AssertPullResponseIsSetWhenPacketIsValid)
 
 	// endregion
 }}

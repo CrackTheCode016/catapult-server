@@ -118,13 +118,12 @@ namespace catapult { namespace model {
 				NetworkIdentifier networkIdentifier,
 				const Key& signerPublicKey,
 				const TContainer& transactions) {
-			uint32_t size = sizeof(BlockHeader) + CalculateTotalSize(transactions);
+			uint32_t size = SizeOf32<BlockHeader>() + CalculateTotalSize(transactions);
 			auto pBlock = utils::MakeUniqueWithSize<Block>(size);
 			std::memset(static_cast<void*>(pBlock.get()), 0, sizeof(BlockHeader));
 			pBlock->Size = size;
 
 			pBlock->SignerPublicKey = signerPublicKey;
-			pBlock->BeneficiaryPublicKey = signerPublicKey;
 
 			pBlock->Version = Block::Current_Version;
 			pBlock->Network = networkIdentifier;
@@ -133,6 +132,8 @@ namespace catapult { namespace model {
 			pBlock->Height = context.BlockHeight + Height(1);
 			pBlock->Difficulty = Difficulty();
 			pBlock->PreviousBlockHash = context.BlockHash;
+
+			pBlock->BeneficiaryAddress = GetSignerAddress(*pBlock);
 
 			// append all the transactions
 			auto* pDestination = reinterpret_cast<uint8_t*>(pBlock->TransactionsPtr());

@@ -37,7 +37,7 @@ namespace catapult { namespace test {
 	/// Root namespace header.
 	struct RootNamespaceHeader {
 	public:
-		RootNamespaceHeader(const Key& owner, Height lifetimeStart, Height lifetimeEnd, uint64_t numChildren)
+		RootNamespaceHeader(const Address& owner, Height lifetimeStart, Height lifetimeEnd, uint64_t numChildren)
 				: Owner(owner)
 				, LifetimeStart(lifetimeStart)
 				, LifetimeEnd(lifetimeEnd)
@@ -46,7 +46,7 @@ namespace catapult { namespace test {
 		{}
 
 	public:
-		Key Owner;
+		Address Owner;
 		Height LifetimeStart;
 		Height LifetimeEnd;
 		state::AliasType AliasType;
@@ -97,13 +97,13 @@ namespace catapult { namespace test {
 	/// Asserts that \a root has expected property values (\a owner, \a lifetimeStart, \a lifetimeEnd, \a numChildren)
 	inline void AssertRootNamespace(
 			const state::RootNamespace& root,
-			const Key& owner,
+			const Address& owner,
 			Height lifetimeStart,
 			Height lifetimeEnd,
 			uint64_t numChildren,
 			const state::NamespaceAlias& alias = state::NamespaceAlias()) {
 		auto message = "root " + std::to_string(root.id().unwrap());
-		EXPECT_EQ(owner, root.ownerPublicKey()) << message;
+		EXPECT_EQ(owner, root.ownerAddress()) << message;
 		EXPECT_EQ(lifetimeStart, root.lifetime().Start) << message;
 		EXPECT_EQ(lifetimeEnd, root.lifetime().End) << message;
 		EXPECT_EQ(numChildren, root.size()) << message;
@@ -126,7 +126,7 @@ namespace catapult { namespace test {
 			auto totalAliasDataSize = 0u;
 			auto* pData = buffer.data() + offset;
 			for (const auto& seed : seeds) {
-				*pData++ = (NamespaceId() != seed.Part1 ? 1 : 0) + (NamespaceId() != seed.Part2 ? 1 : 0);
+				*pData++ = static_cast<uint8_t>((NamespaceId() != seed.Part1 ? 1 : 0) + (NamespaceId() != seed.Part2 ? 1 : 0));
 
 				if (NamespaceId() != seed.Part1) {
 					reinterpret_cast<NamespaceId&>(*pData) = seed.Part1;
@@ -185,7 +185,7 @@ namespace catapult { namespace test {
 		}
 
 	private:
-		static size_t WriteDepthOneWithoutChildrenHeaders(std::vector<uint8_t>& buffer, const Key& owner, state::AliasType aliasType) {
+		static size_t WriteDepthOneWithoutChildrenHeaders(std::vector<uint8_t>& buffer, const Address& owner, state::AliasType aliasType) {
 			reinterpret_cast<NamespaceHistoryHeader&>(buffer[0]) = TTraits::CreateHistoryHeader(NamespaceId(123), 1);
 			auto offset = sizeof(NamespaceHistoryHeader);
 

@@ -56,10 +56,10 @@ namespace catapult {
 
 	// region byte arrays (address)
 
-	struct Address_tag { static constexpr size_t Size = 25; };
+	struct Address_tag { static constexpr size_t Size = 24; };
 	using Address = utils::ByteArray<Address_tag>;
 
-	struct UnresolvedAddress_tag { static constexpr size_t Size = 25; };
+	struct UnresolvedAddress_tag { static constexpr size_t Size = 24; };
 	using UnresolvedAddress = utils::ByteArray<UnresolvedAddress_tag>;
 
 	// endregion
@@ -80,6 +80,12 @@ namespace catapult {
 
 	struct Height_tag {};
 	using Height = utils::BaseValue<uint64_t, Height_tag>;
+
+	struct FinalizationEpoch_tag {};
+	using FinalizationEpoch = utils::BaseValue<uint64_t, FinalizationEpoch_tag>;
+
+	struct FinalizationPoint_tag {};
+	using FinalizationPoint = utils::BaseValue<uint64_t, FinalizationPoint_tag>;
 
 	struct BlockDuration_tag {};
 	using BlockDuration = utils::BaseValue<uint64_t, BlockDuration_tag>;
@@ -109,5 +115,11 @@ namespace catapult {
 	template<typename T, size_t N>
 	constexpr size_t CountOf(T const (&)[N]) noexcept {
 		return N;
+	}
+
+	/// Gets the size of the specified type as an unsigned 32 bit value.
+	template<typename T>
+	constexpr uint32_t SizeOf32() {
+		return static_cast<uint32_t>(sizeof(T));
 	}
 }

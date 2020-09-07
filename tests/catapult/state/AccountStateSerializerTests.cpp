@@ -63,7 +63,8 @@ namespace catapult { namespace state {
 
 			state::AccountType AccountType;
 			uint8_t Format;
-			AccountKeys::KeyType SupplementalAccountKeysMask;
+			AccountPublicKeys::KeyType SupplementalPublicKeysMask;
+			uint8_t NumVotingKeys;
 		};
 
 		struct HighValueImportanceHeader {
@@ -72,7 +73,6 @@ namespace catapult { namespace state {
 		};
 
 		struct MosaicHeader {
-			MosaicId OptimizedMosaicId;
 			uint16_t MosaicsCount;
 		};
 
@@ -92,18 +92,31 @@ namespace catapult { namespace state {
 
 		// region account state utils
 
-		AccountState CreateRandomAccountState(
-				size_t numMosaics,
-				AccountKeys::KeyType supplementalAccountKeysMask = AccountKeys::KeyType::Unset) {
+		struct RandomSeed {
+			AccountPublicKeys::KeyType SupplementalPublicKeysMask = AccountPublicKeys::KeyType::Unset;
+			uint8_t NumVotingKeys = 0;
+			bool ShouldConstrainOptimizedMosaicId = false;
+		};
+
+		AccountState CreateRandomAccountState(size_t numMosaics, const RandomSeed& seed) {
 			auto accountState = AccountState(test::GenerateRandomAddress(), Height(123));
 			test::FillWithRandomData(accountState.PublicKey);
 			accountState.PublicKeyHeight = Height(234);
 
 			accountState.AccountType = static_cast<AccountType>(33);
-			test::SetRandomSupplementalAccountKeys(accountState, supplementalAccountKeysMask);
+			test::SetRandomSupplementalPublicKeys(accountState, seed.SupplementalPublicKeysMask, seed.NumVotingKeys);
 
 			test::RandomFillAccountData(1, accountState, numMosaics);
-			accountState.Balances.optimize(test::GenerateRandomValue<MosaicId>());
+			if (seed.ShouldConstrainOptimizedMosaicId) {
+				if (0 != numMosaics) {
+					auto iter = accountState.Balances.begin();
+					std::advance(iter, static_cast<int64_t>(test::Random() % numMosaics));
+					accountState.Balances.optimize(iter->first);
+				}
+			} else {
+				accountState.Balances.optimize(test::GenerateRandomValue<MosaicId>());
+			}
+
 			return accountState;
 		}
 
@@ -184,17 +197,25 @@ namespace catapult { namespace state {
 		}
 
 		void ProcessMosaicHeader(AccountState& accountState, const MosaicHeader& header) {
-			accountState.Balances.optimize(header.OptimizedMosaicId);
-
 			const auto* pMosaic = reinterpret_cast<const model::Mosaic*>(&header + 1);
-			for (auto i = 0u; i < header.MosaicsCount; ++i, ++pMosaic)
+			for (auto i = 0u; i < header.MosaicsCount; ++i, ++pMosaic) {
 				accountState.Balances.credit(pMosaic->MosaicId, pMosaic->Amount);
+
+				if (0 == i)
+					accountState.Balances.optimize(pMosaic->MosaicId);
+			}
 		}
 
-		template<typename TKey>
-		size_t SetKeyFromData(AccountKeys::KeyAccessor<TKey>& keyAccessor, const uint8_t* pData) {
-			keyAccessor.set(reinterpret_cast<const TKey&>(*pData));
-			return TKey::Size;
+		size_t SetPublicKeyFromData(AccountPublicKeys::PublicKeyAccessor<Key>& publicKeyAccessor, const uint8_t* pData) {
+			publicKeyAccessor.set(reinterpret_cast<const Key&>(*pData));
+			return Key::Size;
+		}
+
+		size_t AddPublicKeyFromData(
+				AccountPublicKeys::PublicKeysAccessor<model::PinnedVotingKey>& publicKeysAccessor,
+				const uint8_t* pData) {
+			publicKeysAccessor.add(reinterpret_cast<const model::PinnedVotingKey&>(*pData));
+			return model::PinnedVotingKey::Size;
 		}
 
 		AccountState DeserializeNonHistoricalFromBuffer(const uint8_t* pData, uint8_t format) {
@@ -203,17 +224,17 @@ namespace catapult { namespace state {
 			pData += sizeof(AccountStateHeader);
 			auto accountState = CreateAccountStateFromHeader(accountStateHeader);
 
-			if (HasFlag(AccountKeys::KeyType::Linked, accountStateHeader.SupplementalAccountKeysMask))
-				pData += SetKeyFromData(accountState.SupplementalAccountKeys.linkedPublicKey(), pData);
+			if (HasFlag(AccountPublicKeys::KeyType::Linked, accountStateHeader.SupplementalPublicKeysMask))
+				pData += SetPublicKeyFromData(accountState.SupplementalPublicKeys.linked(), pData);
 
-			if (HasFlag(AccountKeys::KeyType::VRF, accountStateHeader.SupplementalAccountKeysMask))
-				pData += SetKeyFromData(accountState.SupplementalAccountKeys.vrfPublicKey(), pData);
+			if (HasFlag(AccountPublicKeys::KeyType::Node, accountStateHeader.SupplementalPublicKeysMask))
+				pData += SetPublicKeyFromData(accountState.SupplementalPublicKeys.node(), pData);
 
-			if (HasFlag(AccountKeys::KeyType::Voting, accountStateHeader.SupplementalAccountKeysMask))
-				pData += SetKeyFromData(accountState.SupplementalAccountKeys.votingPublicKey(), pData);
+			if (HasFlag(AccountPublicKeys::KeyType::VRF, accountStateHeader.SupplementalPublicKeysMask))
+				pData += SetPublicKeyFromData(accountState.SupplementalPublicKeys.vrf(), pData);
 
-			if (HasFlag(AccountKeys::KeyType::Node, accountStateHeader.SupplementalAccountKeysMask))
-				pData += SetKeyFromData(accountState.SupplementalAccountKeys.nodePublicKey(), pData);
+			for (auto i = 0u; i < accountStateHeader.NumVotingKeys; ++i)
+				pData += AddPublicKeyFromData(accountState.SupplementalPublicKeys.voting(), pData);
 
 			if (High_Value_Format_Tag == format) {
 				// 2. process HighValueImportanceHeader
@@ -236,10 +257,20 @@ namespace catapult { namespace state {
 
 		// region account state => header utils
 
-		template<typename TKey>
-		size_t SetKeyInData(const AccountKeys::KeyAccessor<TKey>& keyAccessor, uint8_t* pData) {
-			reinterpret_cast<TKey&>(*pData) = keyAccessor.get();
-			return TKey::Size;
+		size_t SetPublicKeyInData(const AccountPublicKeys::PublicKeyAccessor<Key>& publicKeyAccessor, uint8_t* pData) {
+			reinterpret_cast<Key&>(*pData) = publicKeyAccessor.get();
+			return Key::Size;
+		}
+
+		size_t SetPublicKeysInData(
+				const AccountPublicKeys::PublicKeysAccessor<model::PinnedVotingKey>& publicKeysAccessor,
+				uint8_t* pData) {
+			for (auto i = 0u; i < publicKeysAccessor.size(); ++i) {
+				reinterpret_cast<model::PinnedVotingKey&>(*pData) = publicKeysAccessor.get(i);
+				pData += model::PinnedVotingKey::Size;
+			}
+
+			return publicKeysAccessor.size() * model::PinnedVotingKey::Size;
 		}
 
 		void SerializeNonHistoricalToBuffer(const AccountState& accountState, uint8_t format, std::vector<uint8_t>& buffer) {
@@ -252,20 +283,20 @@ namespace catapult { namespace state {
 			accountStateHeader.PublicKeyHeight = accountState.PublicKeyHeight;
 			accountStateHeader.AccountType = accountState.AccountType;
 			accountStateHeader.Format = format;
-			accountStateHeader.SupplementalAccountKeysMask = accountState.SupplementalAccountKeys.mask();
+			accountStateHeader.SupplementalPublicKeysMask = accountState.SupplementalPublicKeys.mask();
+			accountStateHeader.NumVotingKeys = static_cast<uint8_t>(accountState.SupplementalPublicKeys.voting().size());
 			pData += sizeof(AccountStateHeader);
 
-			if (HasFlag(AccountKeys::KeyType::Linked, accountStateHeader.SupplementalAccountKeysMask))
-				pData += SetKeyInData(accountState.SupplementalAccountKeys.linkedPublicKey(), pData);
+			if (HasFlag(AccountPublicKeys::KeyType::Linked, accountStateHeader.SupplementalPublicKeysMask))
+				pData += SetPublicKeyInData(accountState.SupplementalPublicKeys.linked(), pData);
 
-			if (HasFlag(AccountKeys::KeyType::VRF, accountStateHeader.SupplementalAccountKeysMask))
-				pData += SetKeyInData(accountState.SupplementalAccountKeys.vrfPublicKey(), pData);
+			if (HasFlag(AccountPublicKeys::KeyType::Node, accountStateHeader.SupplementalPublicKeysMask))
+				pData += SetPublicKeyInData(accountState.SupplementalPublicKeys.node(), pData);
 
-			if (HasFlag(AccountKeys::KeyType::Voting, accountStateHeader.SupplementalAccountKeysMask))
-				pData += SetKeyInData(accountState.SupplementalAccountKeys.votingPublicKey(), pData);
+			if (HasFlag(AccountPublicKeys::KeyType::VRF, accountStateHeader.SupplementalPublicKeysMask))
+				pData += SetPublicKeyInData(accountState.SupplementalPublicKeys.vrf(), pData);
 
-			if (HasFlag(AccountKeys::KeyType::Node, accountStateHeader.SupplementalAccountKeysMask))
-				pData += SetKeyInData(accountState.SupplementalAccountKeys.nodePublicKey(), pData);
+			pData += SetPublicKeysInData(accountState.SupplementalPublicKeys.voting(), pData);
 
 			if (High_Value_Format_Tag == format) {
 				auto& importanceHeader = reinterpret_cast<HighValueImportanceHeader&>(*pData);
@@ -282,7 +313,6 @@ namespace catapult { namespace state {
 			}
 
 			auto& mosaicHeader = reinterpret_cast<MosaicHeader&>(*pData);
-			mosaicHeader.OptimizedMosaicId = accountState.Balances.optimizedMosaicId();
 			mosaicHeader.MosaicsCount = static_cast<uint16_t>(accountState.Balances.size());
 			pData += sizeof(MosaicHeader);
 
@@ -316,19 +346,19 @@ namespace catapult { namespace state {
 			static size_t CalculatePackedSize(const AccountState& accountState) {
 				auto size = sizeof(AccountStateHeader) + sizeof(MosaicHeader) + accountState.Balances.size() * sizeof(model::Mosaic);
 
-				auto supplementalAccountKeysMask = accountState.SupplementalAccountKeys.mask();
-				std::vector<std::pair<AccountKeys::KeyType, size_t>> keySizes{
-					{ AccountKeys::KeyType::Linked, Key::Size },
-					{ AccountKeys::KeyType::VRF, Key::Size },
-					{ AccountKeys::KeyType::Voting, VotingKey::Size },
-					{ AccountKeys::KeyType::Node, Key::Size }
+				auto accountPublicKeysMask = accountState.SupplementalPublicKeys.mask();
+				std::vector<std::pair<AccountPublicKeys::KeyType, size_t>> keySizes{
+					{ AccountPublicKeys::KeyType::Linked, Key::Size },
+					{ AccountPublicKeys::KeyType::Node, Key::Size },
+					{ AccountPublicKeys::KeyType::VRF, Key::Size }
 				};
 
 				for (const auto& keySizePair : keySizes) {
-					if (HasFlag(keySizePair.first, supplementalAccountKeysMask))
+					if (HasFlag(keySizePair.first, accountPublicKeysMask))
 						size += keySizePair.second;
 				}
 
+				size += accountState.SupplementalPublicKeys.voting().size() * sizeof(model::PinnedVotingKey);
 				return size;
 			}
 
@@ -524,26 +554,56 @@ namespace catapult { namespace state {
 	// region Save
 
 	namespace {
-		std::vector<AccountKeys::KeyType> GetSupplementalAccountKeysMasks() {
-			return {
-				AccountKeys::KeyType::Unset,
-				AccountKeys::KeyType::Linked,
-				AccountKeys::KeyType::VRF,
-				AccountKeys::KeyType::Voting,
-				AccountKeys::KeyType::Node,
-				AccountKeys::KeyType::Linked | AccountKeys::KeyType::Voting,
-				AccountKeys::KeyType::All
+		void ForEachRandomSeed(const consumer<const RandomSeed&>& action) {
+			auto accountPublicKeysMasks = std::initializer_list<AccountPublicKeys::KeyType>{
+				AccountPublicKeys::KeyType::Unset,
+				AccountPublicKeys::KeyType::Linked,
+				AccountPublicKeys::KeyType::Node,
+				AccountPublicKeys::KeyType::VRF,
+				AccountPublicKeys::KeyType::Linked | AccountPublicKeys::KeyType::Node,
+				AccountPublicKeys::KeyType::All
 			};
+
+			for (auto keyType : accountPublicKeysMasks) {
+				for (auto numVotingKeys : std::initializer_list<uint8_t>{ 0, 3 }) {
+					for (auto optimizedMosaicIdConstraint : { true, false }) {
+						CATAPULT_LOG(debug)
+								<< "key type mask: " << static_cast<uint16_t>(keyType)
+								<< ", num voting keys: " << static_cast<uint16_t>(numVotingKeys)
+								<< ", should constrain optimized mosaic id: " << optimizedMosaicIdConstraint;
+
+						action({ keyType, numVotingKeys, optimizedMosaicIdConstraint });
+					}
+				}
+			}
+		}
+
+		template<typename TTraits>
+		void AssertEqual(const RandomSeed& seed, const AccountState& expected, AccountState&& actual) {
+			// adjust actual's optimizedMosaicId to match expected's when it does not contain the optimized mosaic id
+			if (0 == expected.Balances.size() || !seed.ShouldConstrainOptimizedMosaicId) {
+				if (0 == expected.Balances.size()) {
+					// optimized mosaic id will be zero if no mosaics are present
+					EXPECT_EQ(MosaicId(), actual.Balances.optimizedMosaicId());
+				} else {
+					// optimized mosaic id will be the first stored mosaic
+					EXPECT_EQ(expected.Balances.begin()->first, actual.Balances.optimizedMosaicId());
+				}
+
+				actual.Balances.optimize(expected.Balances.optimizedMosaicId());
+			}
+
+			TTraits::AssertEqual(expected, actual);
 		}
 
 		template<typename TTraits, typename TAction>
-		void AssertCanSaveValueWithMosaics(size_t numMosaics, AccountKeys::KeyType supplementalAccountKeysMask, TAction action) {
+		void AssertCanSaveValueWithMosaics(size_t numMosaics, const RandomSeed& seed, TAction action) {
 			// Arrange:
 			std::vector<uint8_t> buffer;
 			mocks::MockMemoryStream stream(buffer);
 
 			// - create a random account state
-			auto originalAccountState = CreateRandomAccountState(numMosaics, supplementalAccountKeysMask);
+			auto originalAccountState = CreateRandomAccountState(numMosaics, seed);
 			TTraits::CoerceToDesiredFormat(originalAccountState);
 
 			// Act:
@@ -559,19 +619,17 @@ namespace catapult { namespace state {
 
 		template<typename TTraits>
 		void AssertCanSaveValueWithMosaics(size_t numMosaics) {
-			for (auto keyType : GetSupplementalAccountKeysMasks()) {
-				CATAPULT_LOG(debug) << "key type mask: " << static_cast<uint16_t>(keyType);
-
+			ForEachRandomSeed([numMosaics](const auto& seed) {
 				// Act + Assert:
-				AssertCanSaveValueWithMosaics<TTraits>(numMosaics, keyType, [numMosaics](
+				AssertCanSaveValueWithMosaics<TTraits>(numMosaics, seed, [numMosaics, &seed](
 						const auto& originalAccountState,
 						const auto& buffer) {
 					// Assert:
 					auto savedAccountState = TTraits::DeserializeFromBuffer(buffer.data());
 					EXPECT_EQ(numMosaics, savedAccountState.Balances.size());
-					TTraits::AssertEqual(originalAccountState, savedAccountState);
+					AssertEqual<TTraits>(seed, originalAccountState, std::move(savedAccountState));
 				});
-			}
+			});
 		}
 	}
 
@@ -589,7 +647,7 @@ namespace catapult { namespace state {
 
 	SERIALIZER_TEST(MosaicsAreSavedInSortedOrder) {
 		static constexpr auto Num_Mosaics = 128u;
-		AssertCanSaveValueWithMosaics<TTraits>(Num_Mosaics, AccountKeys::KeyType::Unset, [](const auto&, const auto& buffer) {
+		AssertCanSaveValueWithMosaics<TTraits>(Num_Mosaics, RandomSeed(), [](const auto&, const auto& buffer) {
 			auto lastMosaicId = MosaicId();
 			auto firstMosaicOffset = TTraits::Mosaic_Header_Offset + sizeof(MosaicHeader);
 			const auto* pMosaic = reinterpret_cast<const model::Mosaic*>(buffer.data() + firstMosaicOffset);
@@ -608,11 +666,9 @@ namespace catapult { namespace state {
 	namespace {
 		template<typename TTraits>
 		void AssertCanLoadValueWithMosaics(size_t numMosaics) {
-			for (auto keyType : GetSupplementalAccountKeysMasks()) {
-				CATAPULT_LOG(debug) << "key type mask: " << static_cast<uint16_t>(keyType);
-
+			ForEachRandomSeed([numMosaics](const auto& seed) {
 				// Arrange: create a random account state
-				auto originalAccountState = CreateRandomAccountState(numMosaics, keyType);
+				auto originalAccountState = CreateRandomAccountState(numMosaics, seed);
 				auto buffer = TTraits::CopyToBuffer(originalAccountState);
 
 				// Act: load the account state
@@ -621,8 +677,8 @@ namespace catapult { namespace state {
 
 				// Assert:
 				EXPECT_EQ(numMosaics, loadedAccountState.Balances.size());
-				TTraits::AssertEqual(originalAccountState, loadedAccountState);
-			}
+				AssertEqual<TTraits>(seed, originalAccountState, std::move(loadedAccountState));
+			});
 		}
 	}
 
@@ -640,7 +696,7 @@ namespace catapult { namespace state {
 
 	SERIALIZER_TEST(CannotLoadAccountStateExtendingPastEndOfStream) {
 		// Arrange: create a random account state
-		auto buffer = TTraits::CopyToBuffer(CreateRandomAccountState(2));
+		auto buffer = TTraits::CopyToBuffer(CreateRandomAccountState(2, RandomSeed()));
 
 		// - size the buffer one byte too small
 		buffer.resize(buffer.size() - 1);
@@ -652,7 +708,7 @@ namespace catapult { namespace state {
 
 	SERIALIZER_TEST(CannotLoadAccountStateWithUnsupportedFormat) {
 		// Arrange: create a random account state
-		auto buffer = TTraits::CopyToBuffer(CreateRandomAccountState(2));
+		auto buffer = TTraits::CopyToBuffer(CreateRandomAccountState(2, RandomSeed()));
 
 		// - set an unsupported format
 		reinterpret_cast<AccountStateHeader&>(buffer[0]).Format = 2;
@@ -669,11 +725,9 @@ namespace catapult { namespace state {
 	namespace {
 		template<typename TTraits>
 		void AssertCanRoundtripValueWithMosaics(size_t numMosaics) {
-			for (auto keyType : GetSupplementalAccountKeysMasks()) {
-				CATAPULT_LOG(debug) << "key type mask: " << static_cast<uint16_t>(keyType);
-
+			ForEachRandomSeed([numMosaics](const auto& seed) {
 				// Arrange: create a random account state
-				auto originalAccountState = CreateRandomAccountState(numMosaics, keyType);
+				auto originalAccountState = CreateRandomAccountState(numMosaics, seed);
 				TTraits::CoerceToDesiredFormat(originalAccountState);
 
 				// Act:
@@ -681,8 +735,8 @@ namespace catapult { namespace state {
 
 				// Assert:
 				EXPECT_EQ(numMosaics, result.Balances.size());
-				TTraits::AssertEqual(originalAccountState, result);
-			}
+				AssertEqual<TTraits>(seed, originalAccountState, std::move(result));
+			});
 		}
 	}
 

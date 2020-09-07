@@ -54,7 +54,7 @@ namespace catapult { namespace ionet {
 		// Arrange:
 		for (auto dataSize : std::initializer_list<uint32_t>{ 1, 100 }) {
 			Packet packet;
-			packet.Size = sizeof(PacketHeader) + dataSize;
+			packet.Size = SizeOf32<PacketHeader>() + dataSize;
 
 			// Act + Assert:
 			EXPECT_EQ(dataSize, CalculatePacketDataSize(packet));
@@ -149,7 +149,7 @@ namespace catapult { namespace ionet {
 
 			static Packet& CreatePacketWithOverflowSize(ByteBuffer& buffer, uint32_t size) {
 				// create a packet with no complete blocks but some overflow bytes
-				constexpr auto Base_Packet_Size = sizeof(Packet);
+				constexpr auto Base_Packet_Size = SizeOf32<Packet>();
 				buffer.resize(Base_Packet_Size + std::max<uint32_t>(sizeof(model::BlockHeader), size));
 				auto& packet = test::SetPushBlockPacketInBuffer(buffer);
 				packet.Size = Base_Packet_Size + size;
@@ -187,7 +187,7 @@ namespace catapult { namespace ionet {
 			static Packet& CreatePacketWithOverflowSize(ByteBuffer& buffer, uint32_t size) {
 				// create a packet with two complete blocks and some overflow bytes
 				constexpr auto Num_Full_Blocks = 2u;
-				constexpr auto Base_Packet_Size = sizeof(Packet) + Num_Full_Blocks * sizeof(model::BlockHeader);
+				constexpr auto Base_Packet_Size = SizeOf32<Packet>() + Num_Full_Blocks * SizeOf32<model::BlockHeader>();
 				buffer.resize(Base_Packet_Size + std::max<uint32_t>(sizeof(model::BlockHeader), size));
 				auto& packet = test::SetPushBlockPacketInBuffer(buffer);
 				for (auto i = 0u; i <= Num_Full_Blocks; ++i) {
@@ -430,8 +430,7 @@ namespace catapult { namespace ionet {
 
 		void AssertCannotExtractFixedSizeStructuresFromPacketWithSize(uint32_t size) {
 			// Arrange:
-			ByteBuffer buffer(size);
-			test::FillWithRandomData(buffer);
+			auto buffer = test::GenerateRandomVector(size);
 			auto& packet = reinterpret_cast<Packet&>(buffer[0]);
 			packet.Size = size;
 
@@ -454,8 +453,7 @@ namespace catapult { namespace ionet {
 	TEST(TEST_CLASS, CanExtractSingleStructure_FixedSizeStructures) {
 		// Arrange: create a packet containing a single fixed size structure
 		constexpr auto Packet_Size = sizeof(Packet) + Fixed_Size;
-		ByteBuffer buffer(Packet_Size);
-		test::FillWithRandomData(buffer);
+		auto buffer = test::GenerateRandomVector(Packet_Size);
 		auto& packet = reinterpret_cast<Packet&>(buffer[0]);
 		packet.Size = Packet_Size;
 
@@ -471,8 +469,7 @@ namespace catapult { namespace ionet {
 	TEST(TEST_CLASS, CanExtractMultipleStructures_FixedSizeStructures) {
 		// Arrange: create a packet containing three fixed size structures
 		constexpr auto Packet_Size = sizeof(Packet) + 3 * Fixed_Size;
-		ByteBuffer buffer(Packet_Size);
-		test::FillWithRandomData(buffer);
+		auto buffer = test::GenerateRandomVector(Packet_Size);
 		auto& packet = reinterpret_cast<Packet&>(buffer[0]);
 		packet.Size = Packet_Size;
 

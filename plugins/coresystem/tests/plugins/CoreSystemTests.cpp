@@ -68,13 +68,15 @@ namespace catapult { namespace plugins {
 					"EntityVersionValidator",
 					"TransactionFeeValidator",
 					"KeyLinkActionValidator",
-					"ZeroInternalPaddingValidator"
+					"ZeroInternalPaddingValidator",
+					"VotingKeyLinkRangeValidator"
 				};
 			}
 
 			static std::vector<std::string> GetStatefulValidatorNames() {
 				return {
 					"AddressValidator",
+					"PublicKeyValidator",
 					"DeadlineValidator",
 					"NemesisSinkValidator",
 					"EligibleHarvesterValidator",
@@ -82,8 +84,8 @@ namespace catapult { namespace plugins {
 					"BalanceTransferValidator",
 
 					// key link transactions
-					"VotingKeyLinkValidator",
-					"VrfKeyLinkValidator"
+					"VrfKeyLinkValidator",
+					"VotingMultiKeyLinkValidator"
 				};
 			}
 
@@ -92,8 +94,8 @@ namespace catapult { namespace plugins {
 
 				// transient observers
 				names.push_back("RecalculateImportancesObserver");
+				names.push_back("HighValueAccountRollbackObserver");
 				names.push_back("BlockStatisticObserver");
-				names.push_back("BlockStatisticPruningObserver");
 				return names;
 			}
 
@@ -108,10 +110,11 @@ namespace catapult { namespace plugins {
 					"TransactionFeeActivityObserver",
 					"HarvestFeeObserver",
 					"TotalTransactionsObserver",
+					"HighValueAccountCommitObserver",
 
 					// key link transactions
-					"VotingKeyLinkObserver",
-					"VrfKeyLinkObserver"
+					"VrfKeyLinkObserver",
+					"VotingMultiKeyLinkObserver"
 				};
 			}
 		};

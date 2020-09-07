@@ -29,7 +29,7 @@ namespace catapult { namespace model {
 
 	// region size + alignment + properties
 
-#define TRANSACTION_FIELDS FIELD(LinkedPublicKey) FIELD(LinkAction)
+#define TRANSACTION_FIELDS FIELD(LinkedPublicKey) FIELD(StartPoint) FIELD(EndPoint) FIELD(LinkAction)
 
 	namespace {
 		template<typename T>
@@ -37,13 +37,13 @@ namespace catapult { namespace model {
 			// Arrange:
 			auto expectedSize = baseSize;
 
-#define FIELD(X) expectedSize += sizeof(T::X);
+#define FIELD(X) expectedSize += SizeOf32<decltype(T::X)>();
 			TRANSACTION_FIELDS
 #undef FIELD
 
 			// Assert:
 			EXPECT_EQ(expectedSize, sizeof(T));
-			EXPECT_EQ(baseSize + 49u, sizeof(T));
+			EXPECT_EQ(baseSize + 65u, sizeof(T));
 		}
 
 		template<typename T>

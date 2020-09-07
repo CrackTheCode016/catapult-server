@@ -19,11 +19,12 @@
 **/
 
 #include "tools/ToolMain.h"
-#include "catapult/crypto/AesCbcDecrypt.h"
+#include "catapult/crypto/AesDecrypt.h"
 #include "catapult/crypto/Hashes.h"
 #include "catapult/crypto/SharedKey.h"
 #include "catapult/crypto/Signer.h"
 #include "catapult/model/Address.h"
+#include "catapult/model/MosaicIdGenerator.h"
 #include "catapult/utils/HexParser.h"
 #ifdef _MSC_VER
 #include <boost/config/compiler/visualc.hpp>
@@ -38,7 +39,7 @@ namespace catapult { namespace tools { namespace testvectors {
 	namespace {
 		// region helpers
 
-		template<typename T>
+		template<typename T = std::string>
 		auto Get(const pt::ptree& tree, const std::string& key) {
 			auto value = tree.get_optional<T>(key);
 			if (!value.is_initialized()) {
@@ -96,17 +97,26 @@ namespace catapult { namespace tools { namespace testvectors {
 		}
 
 		auto ParseAddress(const RawString& str, size_t testCaseNumber) {
-			constexpr size_t Address_Encoded_Size = 40;
+			constexpr size_t Address_Encoded_Size = 39;
 			AssertSize("address", Address_Encoded_Size, str, testCaseNumber);
 			return model::StringToAddress(std::string(str.pData, str.Size));
 		}
 
-		auto ParseSharedKey(const RawString& str, size_t testCaseNumber) {
-			return ParseByteArray<crypto::SharedKey>("sharedKey", str, testCaseNumber);
+		auto ParseMosaicId(const RawString& str, size_t testCaseNumber) {
+			AssertSize("mosaic id", 2 * sizeof(MosaicId::ValueType), str, testCaseNumber);
+			auto buffer = ParseVector(str, testCaseNumber, sizeof(MosaicId::ValueType));
+
+			MosaicId::ValueType rawMosaicId = 0;
+			for (auto byte : buffer) {
+				rawMosaicId <<= 8;
+				rawMosaicId += byte;
+			}
+
+			return MosaicId(rawMosaicId);
 		}
 
-		auto ParseAesInitializationVector(const RawString& str, size_t testCaseNumber) {
-			return ParseByteArray<crypto::AesInitializationVector>("iv (initialization vector)", str, testCaseNumber);
+		auto ParseSharedKey(const RawString& str, size_t testCaseNumber) {
+			return ParseByteArray<crypto::SharedKey>("sharedKey", str, testCaseNumber);
 		}
 
 		// endregion
@@ -114,9 +124,9 @@ namespace catapult { namespace tools { namespace testvectors {
 		auto CreateHashTester(const consumer<const RawBuffer&, Hash256&>& hashFunc) {
 			return [hashFunc] (const auto& testCase, auto testCaseNumber) {
 				// Arrange:
-				auto expectedHash = ParseHash256(Get<std::string>(testCase, "hash"), testCaseNumber);
+				auto expectedHash = ParseHash256(Get<>(testCase, "hash"), testCaseNumber);
 				auto length = Get<size_t>(testCase, "length");
-				auto buffer = ParseVector(Get<std::string>(testCase, "data"), testCaseNumber, length);
+				auto buffer = ParseVector(Get<>(testCase, "data"), testCaseNumber, length);
 
 				// Act:
 				Hash256 result;
@@ -129,8 +139,8 @@ namespace catapult { namespace tools { namespace testvectors {
 
 		bool KeyConversionTester(const pt::ptree& testCase, size_t testCaseNumber) {
 			// Arrange:
-			auto privateKey = ParsePrivateKey(Get<std::string>(testCase, "privateKey"), testCaseNumber);
-			auto expectedPublicKey = ParsePublicKey(Get<std::string>(testCase, "publicKey"), testCaseNumber);
+			auto privateKey = ParsePrivateKey(Get<>(testCase, "privateKey"), testCaseNumber);
+			auto expectedPublicKey = ParsePublicKey(Get<>(testCase, "publicKey"), testCaseNumber);
 
 			// Act:
 			auto keyPair = crypto::KeyPair::FromPrivate(std::move(privateKey));
@@ -141,11 +151,11 @@ namespace catapult { namespace tools { namespace testvectors {
 
 		bool AddressConversionTester(const pt::ptree& testCase, size_t testCaseNumber) {
 			// Arrange:
-			auto publicKey = ParsePublicKey(Get<std::string>(testCase, "publicKey"), testCaseNumber);
-			auto expectedPublic = ParseAddress(Get<std::string>(testCase, "address_public"), testCaseNumber);
-			auto expectedPublicTest = ParseAddress(Get<std::string>(testCase, "address_public_test"), testCaseNumber);
-			auto expectedMijin = ParseAddress(Get<std::string>(testCase, "address_mijin"), testCaseNumber);
-			auto expectedMijinTest = ParseAddress(Get<std::string>(testCase, "address_mijin_test"), testCaseNumber);
+			auto publicKey = ParsePublicKey(Get<>(testCase, "publicKey"), testCaseNumber);
+			auto expectedAddressPublic = ParseAddress(Get<>(testCase, "address_Public"), testCaseNumber);
+			auto expectedAddressPublicTest = ParseAddress(Get<>(testCase, "address_PublicTest"), testCaseNumber);
+			auto expectedAddressMijin = ParseAddress(Get<>(testCase, "address_Mijin"), testCaseNumber);
+			auto expectedAddressMijinTest = ParseAddress(Get<>(testCase, "address_MijinTest"), testCaseNumber);
 
 			// Act:
 			auto addressPublic = model::PublicKeyToAddress(publicKey, model::NetworkIdentifier::Public);
@@ -154,21 +164,20 @@ namespace catapult { namespace tools { namespace testvectors {
 			auto addressMijinTest = model::PublicKeyToAddress(publicKey, model::NetworkIdentifier::Mijin_Test);
 
 			// Assert:
-			auto result = expectedPublic == addressPublic &&
-					expectedPublicTest == addressPublicTest &&
-					expectedMijin == addressMijin &&
-					expectedMijinTest == addressMijinTest;
-			return result;
+			return expectedAddressPublic == addressPublic &&
+					expectedAddressPublicTest == addressPublicTest &&
+					expectedAddressMijin == addressMijin &&
+					expectedAddressMijinTest == addressMijinTest;
 		}
 
 		bool SigningTester(const pt::ptree& testCase, size_t testCaseNumber) {
 			// Arrange:
-			auto privateKey = ParsePrivateKey(Get<std::string>(testCase, "privateKey"), testCaseNumber);
-			auto publicKey = ParsePublicKey(Get<std::string>(testCase, "publicKey"), testCaseNumber);
+			auto privateKey = ParsePrivateKey(Get<>(testCase, "privateKey"), testCaseNumber);
+			auto publicKey = ParsePublicKey(Get<>(testCase, "publicKey"), testCaseNumber);
 			auto keyPair = crypto::KeyPair::FromPrivate(std::move(privateKey));
 			auto length = Get<size_t>(testCase, "length");
-			auto buffer = ParseVector(Get<std::string>(testCase, "data"), testCaseNumber, length);
-			auto expectedSignature = ParseSignature(Get<std::string>(testCase, "signature"), testCaseNumber);
+			auto buffer = ParseVector(Get<>(testCase, "data"), testCaseNumber, length);
+			auto expectedSignature = ParseSignature(Get<>(testCase, "signature"), testCaseNumber);
 
 			// Sanity:
 			if (publicKey != keyPair.publicKey())
@@ -184,10 +193,10 @@ namespace catapult { namespace tools { namespace testvectors {
 
 		bool DeriveTester(const pt::ptree& testCase, size_t testCaseNumber) {
 			// Arrange:
-			auto privateKey = ParsePrivateKey(Get<std::string>(testCase, "privateKey"), testCaseNumber);
-			auto otherPublicKey = ParsePublicKey(Get<std::string>(testCase, "otherPublicKey"), testCaseNumber);
+			auto privateKey = ParsePrivateKey(Get<>(testCase, "privateKey"), testCaseNumber);
+			auto otherPublicKey = ParsePublicKey(Get<>(testCase, "otherPublicKey"), testCaseNumber);
 			auto keyPair = crypto::KeyPair::FromPrivate(std::move(privateKey));
-			auto expectedSharedKey = ParseSharedKey(Get<std::string>(testCase, "sharedKey"), testCaseNumber);
+			auto expectedSharedKey = ParseSharedKey(Get<>(testCase, "sharedKey"), testCaseNumber);
 
 			// Act:
 			auto sharedKey = crypto::DeriveSharedKey(keyPair, otherPublicKey);
@@ -196,37 +205,67 @@ namespace catapult { namespace tools { namespace testvectors {
 			return expectedSharedKey == sharedKey;
 		}
 
-		auto Concatenate(const crypto::AesInitializationVector& initializationVector, const std::vector<uint8_t>& encryptedPayload) {
+		auto Concatenate(
+				const crypto::AesGcm256::Tag& tag,
+				const crypto::AesGcm256::IV& iv,
+				const std::vector<uint8_t>& encryptedPayload) {
 			std::vector<uint8_t> result;
-			result.resize(initializationVector.size() + encryptedPayload.size());
+			result.resize(tag.size() + iv.size() + encryptedPayload.size());
 
-			std::memcpy(result.data(), initializationVector.data(), initializationVector.size());
-			std::memcpy(result.data() + initializationVector.size(), encryptedPayload.data(), encryptedPayload.size());
-
+			std::memcpy(result.data(), tag.data(), tag.size());
+			std::memcpy(result.data() + tag.size(), iv.data(), iv.size());
+			std::memcpy(result.data() + tag.size() + iv.size(), encryptedPayload.data(), encryptedPayload.size());
 			return result;
 		}
 
 		bool DecryptTester(const pt::ptree& testCase, size_t testCaseNumber) {
 			// Arrange:
-			auto privateKey = ParsePrivateKey(Get<std::string>(testCase, "privateKey"), testCaseNumber);
-			auto otherPublicKey = ParsePublicKey(Get<std::string>(testCase, "otherPublicKey"), testCaseNumber);
+			auto privateKey = ParsePrivateKey(Get<>(testCase, "privateKey"), testCaseNumber);
+			auto otherPublicKey = ParsePublicKey(Get<>(testCase, "otherPublicKey"), testCaseNumber);
 			auto keyPair = crypto::KeyPair::FromPrivate(std::move(privateKey));
 			auto sharedKey = crypto::DeriveSharedKey(keyPair, otherPublicKey);
 
-			auto iv = ParseAesInitializationVector(Get<std::string>(testCase, "iv"), testCaseNumber);
-			auto cipherTextStr = Get<std::string>(testCase, "cipherText");
+			auto tag = ParseByteArray<crypto::AesGcm256::Tag>("tag", Get<>(testCase, "tag"), testCaseNumber);
+			auto iv = ParseByteArray<crypto::AesGcm256::IV>("iv", Get<>(testCase, "iv"), testCaseNumber);
+			auto cipherTextStr = Get<>(testCase, "cipherText");
 			auto cipherText = ParseVector(cipherTextStr, testCaseNumber, cipherTextStr.size() / 2);
-			auto clearTextStr = Get<std::string>(testCase, "clearText");
+			auto clearTextStr = Get<>(testCase, "clearText");
 			auto clearText = ParseVector(clearTextStr, testCaseNumber, clearTextStr.size() / 2);
 
-			auto encrypted = Concatenate(iv, cipherText);
+			auto encrypted = Concatenate(tag, iv, cipherText);
 
 			// Act:
 			std::vector<uint8_t> decrypted;
-			auto decryptionResult = TryAesCbcDecrypt(sharedKey, encrypted, decrypted);
+			auto decryptionResult = crypto::AesGcm256::TryDecrypt(sharedKey, encrypted, decrypted);
 
 			// Assert:
 			return decryptionResult && clearText == decrypted;
+		}
+
+		bool MosaicIdDerivationTester(const pt::ptree& testCase, size_t testCaseNumber) {
+			// Arrange:
+			auto nonce = MosaicNonce(Get<MosaicNonce::ValueType>(testCase, "mosaicNonce"));
+			auto addressPublic = ParseAddress(Get<>(testCase, "address_Public"), testCaseNumber);
+			auto addressPublicTest = ParseAddress(Get<>(testCase, "address_PublicTest"), testCaseNumber);
+			auto addressMijin = ParseAddress(Get<>(testCase, "address_Mijin"), testCaseNumber);
+			auto addressMijinTest = ParseAddress(Get<>(testCase, "address_MijinTest"), testCaseNumber);
+
+			auto expectedMosaicIdPublic = ParseMosaicId(Get<>(testCase, "mosaicId_Public"), testCaseNumber);
+			auto expectedMosaicIdPublicTest = ParseMosaicId(Get<>(testCase, "mosaicId_PublicTest"), testCaseNumber);
+			auto expectedMosaicIdMijin = ParseMosaicId(Get<>(testCase, "mosaicId_Mijin"), testCaseNumber);
+			auto expectedMosaicIdMijinTest = ParseMosaicId(Get<>(testCase, "mosaicId_MijinTest"), testCaseNumber);
+
+			// Act:
+			auto mosaicIdPublic = model::GenerateMosaicId(addressPublic, nonce);
+			auto mosaicIdPublicTest = model::GenerateMosaicId(addressPublicTest, nonce);
+			auto mosaicIdMijin = model::GenerateMosaicId(addressMijin, nonce);
+			auto mosaicIdMijinTest = model::GenerateMosaicId(addressMijinTest, nonce);
+
+			// Assert:
+			return expectedMosaicIdPublic == mosaicIdPublic &&
+					expectedMosaicIdPublicTest == mosaicIdPublicTest &&
+					expectedMosaicIdMijin == mosaicIdMijin &&
+					expectedMosaicIdMijinTest == mosaicIdMijinTest;
 		}
 
 		class TestVectorsTool : public Tool {
@@ -249,7 +288,8 @@ namespace catapult { namespace tools { namespace testvectors {
 				RunTest(parseJsonFile("1.test-address"), "address conversion", AddressConversionTester);
 				RunTest(parseJsonFile("2.test-sign"), "signing", SigningTester);
 				RunTest(parseJsonFile("3.test-derive"), "shared key derive", DeriveTester);
-				RunTest(parseJsonFile("4.test-cipher"), "aes-cbc decryption", DecryptTester);
+				RunTest(parseJsonFile("4.test-cipher"), "aes-gcm decryption", DecryptTester);
+				RunTest(parseJsonFile("5.test-mosaic-id"), "mosaic id derivation", MosaicIdDerivationTester);
 				return 0;
 			}
 
@@ -261,6 +301,7 @@ namespace catapult { namespace tools { namespace testvectors {
 				return testData;
 			}
 
+		private:
 			static void RunTest(pt::ptree&& testCases, const std::string& testName, const predicate<const pt::ptree&, size_t>& testFunc) {
 				size_t testCaseNumber = 0;
 				size_t numFailed = 0;

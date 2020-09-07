@@ -31,10 +31,10 @@ namespace catapult { namespace validators {
 	DEFINE_STATEFUL_VALIDATOR(OperationRestriction, [](const Notification& notification, const ValidatorContext& context) {
 		constexpr auto Restriction_Flags = model::AccountRestrictionFlags::TransactionType | model::AccountRestrictionFlags::Outgoing;
 		AccountRestrictionView view(context.Cache);
-		if (!view.initialize(model::PublicKeyToAddress(notification.Signer, context.Network.Identifier)))
+		if (!view.initialize(notification.Sender))
 			return ValidationResult::Success;
 
 		auto isTransferAllowed = view.isAllowed(Restriction_Flags, notification.TransactionType);
 		return isTransferAllowed ? ValidationResult::Success : Failure_RestrictionAccount_Operation_Type_Prohibited;
-	});
+	})
 }}

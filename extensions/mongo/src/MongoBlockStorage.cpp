@@ -59,7 +59,7 @@ namespace catapult { namespace mongo {
 			// so nonzero inserted_count check is proper
 			auto result = blocks.insert_one(dbBlock.view()).value().result();
 			if (0 == result.inserted_count())
-				CATAPULT_THROW_RUNTIME_ERROR("saveBlock failed: block header was not inserted");
+				CATAPULT_THROW_RUNTIME_ERROR("SaveBlockHeader failed: block header was not inserted");
 		}
 
 		void SaveTransactions(
@@ -169,10 +169,6 @@ namespace catapult { namespace mongo {
 				auto currentView = chainStatisticDocument.view()["current"].get_document().view();
 				auto heightValue = mappers::GetUint64OrDefault(currentView, "height", 0);
 				return Height(heightValue);
-			}
-
-			Height finalizedChainHeight() const override {
-				return chainHeight() > Height(0) ? Height(1) : Height(0);
 			}
 
 			model::HashRange loadHashesFrom(Height height, size_t maxHashes) const override {

@@ -50,7 +50,6 @@ namespace catapult { namespace harvesting {
 
 			config.EnableAutoHarvesting = test::LocalNodeFlags::Should_Auto_Harvest == flags;
 			config.MaxUnlockedAccounts = 10;
-			config.BeneficiaryPublicKey = std::string(64, '0');
 			return config;
 		}
 
@@ -473,7 +472,7 @@ namespace catapult { namespace harvesting {
 			auto& accountState = accountStateCache.find(accountDescriptorWrapper.SigningPublicKey).get();
 			accountState.Balances.credit(Harvesting_Mosaic_Id, balance);
 			accountState.ImportanceSnapshots.set(Importance(123), importanceHeight);
-			accountState.SupplementalAccountKeys.vrfPublicKey().set(accountDescriptorWrapper.VrfPublicKey);
+			accountState.SupplementalPublicKeys.vrf().set(accountDescriptorWrapper.VrfPublicKey);
 
 			// - add a block statistic
 			auto& blockStatisticCache = delta.sub<cache::BlockStatisticCache>();
@@ -494,8 +493,8 @@ namespace catapult { namespace harvesting {
 		}
 	}
 
-	TEST(TEST_CLASS, HarvestingTaskIsScheduled) {
-		test::AssertRegisteredTask(TestContext(), 1, Task_Name);
+	TEST(TEST_CLASS, TasksAreRegistered) {
+		test::AssertRegisteredTasks(TestContext(), { Task_Name });
 	}
 
 	// endregion

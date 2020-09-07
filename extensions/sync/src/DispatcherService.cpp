@@ -38,6 +38,7 @@
 #include "catapult/consumers/ReclaimMemoryInspector.h"
 #include "catapult/consumers/TransactionConsumers.h"
 #include "catapult/consumers/UndoBlock.h"
+#include "catapult/crypto/SecureRandomGenerator.h"
 #include "catapult/disruptor/BatchRangeDispatcher.h"
 #include "catapult/extensions/CommitStepHandler.h"
 #include "catapult/extensions/DispatcherUtils.h"
@@ -55,7 +56,6 @@
 #include "catapult/subscribers/StateChangeSubscriber.h"
 #include "catapult/subscribers/TransactionStatusSubscriber.h"
 #include "catapult/thread/MultiServicePool.h"
-#include "catapult/utils/RandomGenerator.h"
 #include <boost/filesystem.hpp>
 
 using namespace catapult::consumers;
@@ -66,17 +66,17 @@ namespace catapult { namespace sync {
 	namespace {
 		// region utils
 
-		crypto::RandomFiller CreateRandomFiller(const std::string& token) {
-			return [token](auto* pOut, auto count) {
-				utils::HighEntropyRandomGenerator(token).fill(pOut, count);
+		crypto::RandomFiller CreateRandomFiller() {
+			return [](auto* pOut, auto count) {
+				crypto::SecureRandomGenerator().fill(pOut, count);
 			};
 		}
 
 		std::shared_ptr<const validators::ParallelValidationPolicy> CreateParallelValidationPolicy(
-				const std::shared_ptr<thread::IoThreadPool>& pValidatorPool,
+				thread::IoThreadPool& validatorPool,
 				const plugins::PluginManager& pluginManager) {
 			return validators::CreateParallelValidationPolicy(
-					pValidatorPool,
+					validatorPool,
 					extensions::CreateStatelessEntityValidator(pluginManager, model::SignatureNotification::Notification_Type));
 		}
 
@@ -170,6 +170,8 @@ namespace catapult { namespace sync {
 				return blocks.size() == result;
 			};
 
+			syncHandlers.LocalFinalizedHeightSupplier = extensions::CreateLocalFinalizedHeightSupplier(state);
+
 			auto pUndoObserver = utils::UniqueToShared(extensions::CreateUndoEntityObserver(pluginManager));
 			syncHandlers.UndoBlock = [&rollbackInfo, &pluginManager, pUndoObserver](
 					const auto& blockElement,
@@ -221,9 +223,7 @@ namespace catapult { namespace sync {
 						extensions::CreateHashCheckOptions(m_nodeConfig.ShortLivedCacheBlockDuration, m_nodeConfig)));
 			}
 
-			std::shared_ptr<ConsumerDispatcher> build(
-					const std::shared_ptr<thread::IoThreadPool>& pValidatorPool,
-					RollbackInfo& rollbackInfo) {
+			std::shared_ptr<ConsumerDispatcher> build(thread::IoThreadPool& validatorPool, RollbackInfo& rollbackInfo) {
 				const auto& utCache = const_cast<const extensions::ServiceState&>(m_state).utCache();
 				auto requiresValidationPredicate = ToRequiresValidationPredicate(m_state.hooks().knownHashPredicate(utCache));
 				m_consumers.push_back(CreateBlockChainCheckConsumer(
@@ -231,20 +231,19 @@ namespace catapult { namespace sync {
 						m_state.config().BlockChain.MaxBlockFutureTime,
 						m_state.timeSupplier()));
 				m_consumers.push_back(CreateBlockStatelessValidationConsumer(
-						CreateParallelValidationPolicy(pValidatorPool, m_state.pluginManager()),
+						CreateParallelValidationPolicy(validatorPool, m_state.pluginManager()),
 						requiresValidationPredicate));
 				m_consumers.push_back(CreateBlockBatchSignatureConsumer(
 						m_state.config().BlockChain.Network.GenerationHashSeed,
-						CreateRandomFiller(m_state.config().Node.BatchVerificationRandomSource),
+						CreateRandomFiller(),
 						m_state.pluginManager().createNotificationPublisher(),
-						pValidatorPool,
+						validatorPool,
 						requiresValidationPredicate));
 
 				auto disruptorConsumers = DisruptorConsumersFromBlockConsumers(m_consumers);
 				disruptorConsumers.push_back(CreateBlockChainSyncConsumer(
 						m_state.cache(),
 						m_state.storage(),
-						m_state.config().BlockChain.MaxRollbackBlocks,
 						CreateBlockChainSyncHandlers(m_state, rollbackInfo)));
 
 				if (m_state.config().Node.EnableAutoSyncCleanup)
@@ -314,18 +313,16 @@ namespace catapult { namespace sync {
 						m_state.hooks().knownHashPredicate(utCache)));
 			}
 
-			std::shared_ptr<ConsumerDispatcher> build(
-					const std::shared_ptr<thread::IoThreadPool>& pValidatorPool,
-					chain::UtUpdater& utUpdater) {
+			std::shared_ptr<ConsumerDispatcher> build(thread::IoThreadPool& validatorPool, chain::UtUpdater& utUpdater) {
 				auto failedTransactionSink = extensions::SubscriberToSink(m_state.transactionStatusSubscriber());
 				m_consumers.push_back(CreateTransactionStatelessValidationConsumer(
-						CreateParallelValidationPolicy(pValidatorPool, m_state.pluginManager()),
+						CreateParallelValidationPolicy(validatorPool, m_state.pluginManager()),
 						failedTransactionSink));
 				m_consumers.push_back(CreateTransactionBatchSignatureConsumer(
 						m_state.config().BlockChain.Network.GenerationHashSeed,
-						CreateRandomFiller(m_state.config().Node.BatchVerificationRandomSource),
+						CreateRandomFiller(),
 						m_state.pluginManager().createNotificationPublisher(),
-						pValidatorPool,
+						validatorPool,
 						failedTransactionSink));
 
 				auto disruptorConsumers = DisruptorConsumersFromTransactionConsumers(m_consumers);
@@ -435,7 +432,7 @@ namespace catapult { namespace sync {
 
 			void registerServices(extensions::ServiceLocator& locator, extensions::ServiceState& state) override {
 				// create shared services
-				auto pValidatorPool = state.pool().pushIsolatedPool("validator");
+				auto* pValidatorPool = state.pool().pushIsolatedPool("validator");
 				auto& utUpdater = CreateAndRegisterUtUpdater(locator, state);
 
 				// create the block and transaction dispatchers and related services
@@ -449,10 +446,10 @@ namespace catapult { namespace sync {
 				transactionDispatcherBuilder.addHashConsumers();
 
 				auto pRollbackInfo = CreateAndRegisterRollbackService(locator, state.timeSupplier(), state.config().BlockChain);
-				auto pBlockDispatcher = blockDispatcherBuilder.build(pValidatorPool, *pRollbackInfo);
+				auto pBlockDispatcher = blockDispatcherBuilder.build(*pValidatorPool, *pRollbackInfo);
 				RegisterBlockDispatcherService(pBlockDispatcher, *pServiceGroup, locator, state);
 
-				auto pTransactionDispatcher = transactionDispatcherBuilder.build(pValidatorPool, utUpdater);
+				auto pTransactionDispatcher = transactionDispatcherBuilder.build(*pValidatorPool, utUpdater);
 				RegisterTransactionDispatcherService(pTransactionDispatcher, *pServiceGroup, locator, state);
 			}
 		};

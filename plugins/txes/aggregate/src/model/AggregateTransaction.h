@@ -22,8 +22,8 @@
 #include "AggregateEntityType.h"
 #include "catapult/model/Cosignature.h"
 #include "catapult/model/EntityType.h"
+#include "catapult/model/SizePrefixedEntityContainer.h"
 #include "catapult/model/Transaction.h"
-#include "catapult/model/TransactionContainer.h"
 
 namespace catapult { namespace model {
 
@@ -70,17 +70,7 @@ namespace catapult { namespace model {
 		}
 
 	public:
-		/// Gets a const pointer to the first cosignature contained in this transaction.
-		/// \note The returned pointer is undefined if the aggregate has an invalid size.
-		const Cosignature* CosignaturesPtr() const {
-			return reinterpret_cast<const Cosignature*>(CosignaturesPtrT(*this));
-		}
-
-		/// Gets a pointer to the first cosignature contained in this transaction.
-		/// \note The returned pointer is undefined if the aggregate has an invalid size.
-		Cosignature* CosignaturesPtr() {
-			return reinterpret_cast<Cosignature*>(CosignaturesPtrT(*this));
-		}
+		DEFINE_SIZE_PREFIXED_ENTITY_VARIABLE_DATA_ACCESSORS(Cosignatures, Cosignature)
 
 		/// Gets the number of cosignatures attached to this transaction.
 		/// \note The returned value is undefined if the aggregate has an invalid size.

@@ -101,7 +101,7 @@ namespace catapult { namespace test {
 		ASSERT_EQ(4u, message.size());
 
 		auto marker = zeromq::BlockMarker::Block_Marker;
-		AssertMessagePart(message[0], &marker, sizeof(marker));
+		AssertMessagePart(message[0], &marker, sizeof(zeromq::BlockMarker));
 		AssertMessagePart(message[1], &blockElement.Block, sizeof(model::BlockHeader));
 		AssertMessagePart(message[2], &blockElement.EntityHash, Hash256::Size);
 		AssertMessagePart(message[3], &blockElement.GenerationHash, Hash256::Size);
@@ -111,8 +111,18 @@ namespace catapult { namespace test {
 		ASSERT_EQ(2u, message.size());
 
 		auto marker = zeromq::BlockMarker::Drop_Blocks_Marker;
-		AssertMessagePart(message[0], &marker, sizeof(marker));
+		AssertMessagePart(message[0], &marker, sizeof(zeromq::BlockMarker));
 		AssertMessagePart(message[1], &height, sizeof(Height));
+	}
+
+	void AssertFinalizedBlockMessage(const zmq::multipart_t& message, Height height, const Hash256& hash, FinalizationPoint point) {
+		ASSERT_EQ(4u, message.size());
+
+		auto marker = zeromq::BlockMarker::Finalized_Block_Marker;
+		AssertMessagePart(message[0], &marker, sizeof(zeromq::BlockMarker));
+		AssertMessagePart(message[1], &height, sizeof(Height));
+		AssertMessagePart(message[2], &point, sizeof(FinalizationPoint));
+		AssertMessagePart(message[3], &hash, Hash256::Size);
 	}
 
 	void AssertTransactionElementMessage(
@@ -159,7 +169,7 @@ namespace catapult { namespace test {
 		ASSERT_EQ(2u, message.size());
 
 		AssertMessagePart(message[0], topic.data(), topic.size());
-		AssertMessagePart(message[1], &transactionStatus, sizeof(transactionStatus));
+		AssertMessagePart(message[1], &transactionStatus, sizeof(model::TransactionStatus));
 	}
 
 	void AssertDetachedCosignatureMessage(
@@ -169,7 +179,7 @@ namespace catapult { namespace test {
 		ASSERT_EQ(2u, message.size());
 
 		AssertMessagePart(message[0], topic.data(), topic.size());
-		AssertMessagePart(message[1], &detachedCosignature, sizeof(detachedCosignature));
+		AssertMessagePart(message[1], &detachedCosignature, sizeof(model::DetachedCosignature));
 	}
 
 	void AssertMessages(

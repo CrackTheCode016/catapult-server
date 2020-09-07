@@ -29,8 +29,12 @@ namespace catapult { namespace validators {
 	// region Address / Key
 
 	/// Validator that applies to all account address notifications and validates that:
-	/// - the address is valid and targets the expected network (\a networkIdentifier)
-	DECLARE_STATEFUL_VALIDATOR(Address, model::AccountAddressNotification)(model::NetworkIdentifier networkIdentifier);
+	/// - the address is valid and targets the expected network
+	DECLARE_STATEFUL_VALIDATOR(Address, model::AccountAddressNotification)();
+
+	/// Validator that applies to all account public key notifications and validates that:
+	/// - the public key is associated with a unique address (i.e. it does not collide with a previously registered public key)
+	DECLARE_STATEFUL_VALIDATOR(PublicKey, model::AccountPublicKeyNotification)();
 
 	/// Validator that applies to all account address notifications and validates that:
 	/// - the address is nonzero given the expected network (\a networkIdentifier)
@@ -97,6 +101,12 @@ namespace catapult { namespace validators {
 	/// Validator that applies to key link action notifications and validates that:
 	/// - link action is valid
 	DECLARE_STATELESS_VALIDATOR(KeyLinkAction, model::KeyLinkActionNotification)();
+
+	/// Validator that applies to voting key link notifications and validates that:
+	/// - start point is prior to end point
+	/// - range is longer than \a minRange
+	/// - range is shorter than \a maxRange
+	DECLARE_STATELESS_VALIDATOR(VotingKeyLinkRange, model::VotingKeyLinkNotification)(uint32_t minRange, uint32_t maxRange);
 
 	// endregion
 

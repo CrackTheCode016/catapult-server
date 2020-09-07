@@ -56,6 +56,12 @@ namespace catapult { namespace tools { namespace linker {
 				optionsBuilder("linkedPublicKey",
 						OptionsValue<std::string>(),
 						"linked public key (32 bytes for vrf, 48 bytes for voting)");
+				optionsBuilder("startPoint,b",
+						OptionsValue<uint64_t>()->default_value(1),
+						"voting key start point");
+				optionsBuilder("endPoint,e",
+						OptionsValue<uint64_t>()->default_value(26280),
+						"voting key end point");
 				optionsBuilder("output",
 						OptionsValue<std::string>(),
 						"output filename");
@@ -66,12 +72,14 @@ namespace catapult { namespace tools { namespace linker {
 				validateOptions(options);
 
 				// 1. create transaction
+				auto networkIdentifier = config.BlockChain.Network.Identifier;
 				auto signer = crypto::KeyPair::FromString(options["secret"].as<std::string>());
 				auto linkedPublicKey = options["linkedPublicKey"].as<std::string>();
-				auto networkId = config.BlockChain.Network.Identifier;
+				auto startPoint = FinalizationPoint(options["startPoint"].as<uint64_t>());
+				auto endPoint = FinalizationPoint(options["endPoint"].as<uint64_t>());
 				auto pTransaction = options["type"].as<std::string>() == "voting"
-						? createVotingKeyLinkTransaction(networkId, signer.publicKey(), linkedPublicKey)
-						: createVrfKeyLinkTransaction(networkId, signer.publicKey(), linkedPublicKey);
+						? createVotingKeyLinkTransaction(networkIdentifier, signer.publicKey(), linkedPublicKey, startPoint, endPoint)
+						: createVrfKeyLinkTransaction(networkIdentifier, signer.publicKey(), linkedPublicKey);
 
 				// 2. sign it
 				pTransaction->Deadline = Timestamp(1);
@@ -101,20 +109,24 @@ namespace catapult { namespace tools { namespace linker {
 			}
 
 			std::shared_ptr<model::Transaction> createVotingKeyLinkTransaction(
-					model::NetworkIdentifier networkId,
+					model::NetworkIdentifier networkIdentifier,
 					const Key& publicKey,
-					const std::string& linkedPublicKey) {
-				builders::VotingKeyLinkBuilder builder(networkId, publicKey);
+					const std::string& linkedPublicKey,
+					FinalizationPoint startPoint,
+					FinalizationPoint endPoint) {
+				builders::VotingKeyLinkBuilder builder(networkIdentifier, publicKey);
 				builder.setLinkedPublicKey(utils::ParseByteArray<VotingKey>(linkedPublicKey));
 				builder.setLinkAction(model::LinkAction::Link);
+				builder.setStartPoint(startPoint);
+				builder.setEndPoint(endPoint);
 				return builder.build();
 			}
 
 			std::shared_ptr<model::Transaction> createVrfKeyLinkTransaction(
-					model::NetworkIdentifier networkId,
+					model::NetworkIdentifier networkIdentifier,
 					const Key& publicKey,
 					const std::string& linkedPublicKey) {
-				builders::VrfKeyLinkBuilder builder(networkId, publicKey);
+				builders::VrfKeyLinkBuilder builder(networkIdentifier, publicKey);
 				builder.setLinkedPublicKey(utils::ParseByteArray<Key>(linkedPublicKey));
 				builder.setLinkAction(model::LinkAction::Link);
 				return builder.build();

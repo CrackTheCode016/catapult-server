@@ -80,7 +80,7 @@ namespace catapult { namespace cache {
 
 		template<typename TSubCacheViews, typename TUpdateMerkleRoot>
 		StateHashInfo CalculateStateHashInfo(const TSubCacheViews& subViews, TUpdateMerkleRoot updateMerkleRoot) {
-			utils::SlowOperationLogger logger("CalculateStateHashInfo", utils::LogLevel::Warning);
+			utils::SlowOperationLogger logger("CalculateStateHashInfo", utils::LogLevel::warning);
 
 			StateHashInfo stateHashInfo;
 			stateHashInfo.SubCacheMerkleRoots = CollectSubCacheMerkleRoots(subViews, updateMerkleRoot);
@@ -167,6 +167,15 @@ namespace catapult { namespace cache {
 					"wrong number of sub cache merkle roots were passed (expected, actual)",
 					merkleRootIndex,
 					subCacheMerkleRoots.size());
+		}
+	}
+
+	void CatapultCacheDelta::prune(Height height) {
+		for (const auto& pSubView : m_subViews) {
+			if (!pSubView)
+				continue;
+
+			pSubView->prune(height);
 		}
 	}
 
