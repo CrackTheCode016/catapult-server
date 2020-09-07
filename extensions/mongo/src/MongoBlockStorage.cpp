@@ -193,18 +193,27 @@ namespace catapult { namespace mongo {
 					dropBlocksAfter(height - Height(1));
 
 				auto dbHeight = chainHeight();
-				if (height != dbHeight + Height(1)) {
+				// instead of stopping if the db is already full, dont add to it
+				// until the height is the dbHeight + 1
+				if (height == dbHeight + Height(1)) {
+					CATAPULT_LOG(important) << "saving block " << height << " when storage height is " << dbHeight;
+					SaveBlockHeader(m_database, blockElement);
+					SaveTransactions(m_context.bulkWriter(), height, blockElement.Transactions, m_transactionRegistry, m_errorPolicy);
+					if (blockElement.OptionalStatement)
+						SaveBlockStatement(m_context.bulkWriter(), height, *blockElement.OptionalStatement, m_receiptRegistry, m_errorPolicy);
+					setHeight(blockElement.Block.Height);
+				}
+				// to prevent broker from adding blocks that are after the dbHeight if it's zero,
+				// we throw an error to indicate that the node should be re-synced
+				else if (dbHeight == Height(0) && height > Height(1)) {
 					std::ostringstream out;
-					out << "cannot save block with height " << height << " when storage height is " << dbHeight;
+					out << "cannot save block, please reset node's data to properly sync with broker";
 					CATAPULT_THROW_INVALID_ARGUMENT(out.str().c_str());
 				}
-
-				SaveBlockHeader(m_database, blockElement);
-				SaveTransactions(m_context.bulkWriter(), height, blockElement.Transactions, m_transactionRegistry, m_errorPolicy);
-				if (blockElement.OptionalStatement)
-					SaveBlockStatement(m_context.bulkWriter(), height, *blockElement.OptionalStatement, m_receiptRegistry, m_errorPolicy);
-
-				setHeight(blockElement.Block.Height);
+				// otherwise just pink log
+				 else {
+					CATAPULT_LOG(important) << "no block to save at height " << height << " while db is at height " << dbHeight;
+				}
 			}
 
 			void dropBlocksAfter(Height height) override {
