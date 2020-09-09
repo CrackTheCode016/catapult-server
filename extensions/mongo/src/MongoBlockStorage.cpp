@@ -196,7 +196,7 @@ namespace catapult { namespace mongo {
 				// instead of stopping if the db is already full, dont add to it
 				// until the height is the dbHeight + 1
 				if (height == dbHeight + Height(1)) {
-					CATAPULT_LOG(important) << "saving block " << height << " when storage height is " << dbHeight;
+					CATAPULT_LOG(info) << "saving block " << height << " when storage height is " << dbHeight;
 					SaveBlockHeader(m_database, blockElement);
 					SaveTransactions(m_context.bulkWriter(), height, blockElement.Transactions, m_transactionRegistry, m_errorPolicy);
 					if (blockElement.OptionalStatement)
@@ -212,7 +212,7 @@ namespace catapult { namespace mongo {
 				}
 				// otherwise just pink log
 				 else {
-					CATAPULT_LOG(important) << "no block to save at height " << height << " while db is at height " << dbHeight;
+					CATAPULT_LOG(info) << "no block to save at height " << height << " while db is at height " << dbHeight;
 				}
 			}
 
